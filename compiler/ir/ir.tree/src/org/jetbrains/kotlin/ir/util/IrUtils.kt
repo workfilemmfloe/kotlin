@@ -686,10 +686,12 @@ fun IrClass.addSimpleDelegatingConstructor(
 val IrCall.isSuspend get() = (symbol.owner as? IrSimpleFunction)?.isSuspend == true
 val IrFunctionReference.isSuspend get() = (symbol.owner as? IrSimpleFunction)?.isSuspend == true
 
+val IrFunction.isOverridable get() = this is IrSimpleFunction && this.isOverridable
+
 val IrSimpleFunction.isOverridable: Boolean
     get() = visibility != DescriptorVisibilities.PRIVATE && modality != Modality.FINAL && (parent as? IrClass)?.isFinalClass != true
 
-val IrSimpleFunction.isOverridableOrOverrides: Boolean get() = isOverridable || overriddenSymbols.isNotEmpty()
+val IrFunction.isOverridableOrOverrides: Boolean get() = this is IrSimpleFunction && (isOverridable || overriddenSymbols.isNotEmpty())
 
 val IrDeclaration.isMemberOfOpenClass: Boolean
     get() {
