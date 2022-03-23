@@ -5,7 +5,6 @@
 
 package org.jetbrains.kotlin.gradle.kpm.idea
 
-import org.jetbrains.kotlin.gradle.kpm.KotlinExternalModelContainer
 import java.io.Serializable
 
 sealed interface IdeaKotlinFragment : Serializable {
@@ -15,7 +14,7 @@ sealed interface IdeaKotlinFragment : Serializable {
     val dependencies: List<IdeaKotlinDependency>
     val sourceDirectories: List<IdeaKotlinSourceDirectory>
     val resourceDirectories: List<IdeaKotlinResourceDirectory>
-    val external: KotlinExternalModelContainer
+    val extras: IdeaKotlinExtras
 }
 
 val IdeaKotlinFragment.name get() = coordinates.fragmentName
@@ -28,7 +27,7 @@ data class IdeaKotlinFragmentImpl(
     override val dependencies: List<IdeaKotlinDependency>,
     override val sourceDirectories: List<IdeaKotlinSourceDirectory>,
     override val resourceDirectories: List<IdeaKotlinResourceDirectory>,
-    override val external: KotlinExternalModelContainer
+    override val extras: IdeaKotlinExtras
 ) : IdeaKotlinFragment {
 
     @InternalKotlinGradlePluginApi
