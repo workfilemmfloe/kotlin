@@ -22,7 +22,7 @@ fun IdeaKotlinExtras(extras: IterableExtras): IdeaKotlinExtras {
 @WriteReplacedModel(replacedBy = IdeaKotlinExtrasSurrogate::class)
 @InternalKotlinGradlePluginApi
 private class IdeaKotlinExtrasImpl(private val extras: IterableExtras) : IdeaKotlinExtras, AbstractIterableExtras() {
-    override val ids: Set<Extras.Id<*>> get() = extras.ids
+    override val keys: Set<Extras.Id<*>> get() = extras.keys
     override val entries: Set<Extras.Entry<*>> = extras.entries
     override fun <T : Any> get(key: Extras.Key<T>): T? = extras[key]
     override fun isEmpty(): Boolean = extras.isEmpty()
@@ -34,7 +34,7 @@ private class IdeaKotlinExtrasImpl(private val extras: IterableExtras) : IdeaKot
 
 @WriteReplacedModel(replacedBy = EmptyIdeaKotlinExtras.Surrogate::class)
 private object EmptyIdeaKotlinExtras : IdeaKotlinExtras, AbstractIterableExtras() {
-    override val ids: Set<Extras.Id<*>> = emptySet()
+    override val keys: Set<Extras.Id<*>> = emptySet()
     override val entries: Set<Extras.Entry<*>> = emptySet()
     override fun <T : Any> get(key: Extras.Key<T>): T? = null
 
@@ -69,14 +69,14 @@ private class SerializedIdeaKotlinExtras(
     private val writeLock = lock.writeLock()
     private val deserializedNulls = mutableSetOf<Extras.Id<*>>()
     private val deserializedExtras = mutableExtrasOf()
-    override val ids: Set<Extras.Id<*>> = serializedExtras.keys.toSet()
+    override val keys: Set<Extras.Id<*>> = serializedExtras.keys.toSet()
 
     override fun <T : Any> get(key: Extras.Key<T>): T? {
         /*
         Fast path: If id is not present, we can already return null
         Locking is not required, since the `ids` are captured and immutable here
         */
-        if (key.id !in ids) return null
+        if (key.id !in keys) return null
 
         /*
         Guard: A key without serializer capability has no rights to access any data here

@@ -8,33 +8,33 @@ package org.jetbrains.kotlin.tooling.core
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-class ExtrasIdStableStringTest {
+class ExtrasKeyStableStringTest {
     @Test
     fun `test - sample 0`() {
-        assertEquals("kotlin.String", extrasIdOf<String>().stableString)
+        assertEquals("kotlin.String", keyOf<String>().stableString)
     }
 
     @Test
     fun `test - sample 1`() {
-        assertEquals("kotlin.String;withName", extrasIdOf<String>("withName").stableString)
+        assertEquals("kotlin.String;withName", keyOf<String>("withName").stableString)
     }
 
     @Test
     fun `test - sample 2`() {
-        assertEquals(extrasIdOf<String>(), Extras.Id.fromString(extrasIdOf<String>().stableString))
+        assertEquals(keyOf<String>(), Extras.Key.fromString(keyOf<String>().stableString))
     }
 
     @Test
     fun `test - sample 3`() {
-        assertEquals(extrasIdOf<String>("withName"), Extras.Id.fromString(extrasIdOf<String>("withName").stableString))
+        assertEquals(keyOf<String>("withName"), Extras.Key.fromString(keyOf<String>("withName").stableString))
     }
 
     @Test
     fun `test - sample 4`() {
         assertEquals(
-            extrasIdOf<List<Pair<Int, String>>>("withName"),
-            Extras.Id.fromString(
-                extrasIdOf<List<Pair<Int, String>>>("withName").stableString
+            keyOf<List<Pair<Int, String>>>("withName"),
+            Extras.Key.fromString(
+                keyOf<List<Pair<Int, String>>>("withName").stableString
             )
         )
     }

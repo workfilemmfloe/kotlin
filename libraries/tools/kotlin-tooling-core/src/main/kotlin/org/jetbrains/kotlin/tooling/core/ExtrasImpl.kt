@@ -10,10 +10,10 @@ internal class MutableExtrasImpl(
     initialEntries: Iterable<Extras.Entry<*>> = emptyList()
 ) : MutableExtras, AbstractIterableExtras() {
 
-    private val extras: MutableMap<Extras.Id<*>, Extras.Entry<*>> =
-        initialEntries.associateByTo(mutableMapOf()) { it.key.id }
+    private val extras: MutableMap<Extras.Key<*>, Extras.Entry<*>> =
+        initialEntries.associateByTo(mutableMapOf()) { it.key }
 
-    override val ids: Set<Extras.Id<*>>
+    override val keys: Set<Extras.Key<*>>
         get() = extras.keys
 
     override val entries: Set<Extras.Entry<*>>
@@ -25,27 +25,23 @@ internal class MutableExtrasImpl(
     override fun isEmpty(): Boolean = extras.isEmpty()
 
     override fun <T : Any> set(key: Extras.Key<T>, value: T): T? {
-        return extras.put(key.id, key withValue value)?.let { it.value as T }
+        return put(Extras.Entry(key, value))
+    }
+
+    override fun <T : Any> put(entry: Extras.Entry<T>): T? {
+        return extras.put(entry.key, entry)?.let { it.value as T }
     }
 
     override fun putAll(from: Iterable<Extras.Entry<*>>) {
-        this.extras.putAll(from.associateBy { it.key.id })
+        this.extras.putAll(from.associateBy { it.key })
     }
 
     override fun <T : Any> get(key: Extras.Key<T>): T? {
-        return extras[key.id]?.let { it.value as T }
-    }
-
-    override fun <T : Any> remove(id: Extras.Id<T>): Extras.Entry<T>? {
-        return extras.remove(id)?.let { it as Extras.Entry<T> }
+        return extras[key]?.let { it.value as T }
     }
 
     override fun <T : Any> remove(key: Extras.Key<T>): T? {
-        val entry = extras[key.id]
-        if (entry?.key == key) {
-            return remove(key.id)?.value
-        }
-        return null
+        return extras.remove(key)?.let { it.value as T }
     }
 
     override fun clear() {
@@ -55,13 +51,13 @@ internal class MutableExtrasImpl(
 
 @Suppress("unchecked_cast")
 internal class ImmutableExtrasImpl private constructor(
-    private val extras: Map<Extras.Id<*>, Extras.Entry<*>>
+    private val extras: Map<Extras.Key<*>, Extras.Entry<*>>
 ) : AbstractIterableExtras() {
-    constructor(extras: Iterable<Extras.Entry<*>>) : this(extras.associateBy { it.key.id })
+    constructor(extras: Iterable<Extras.Entry<*>>) : this(extras.associateBy { it.key })
 
-    constructor(extras: Array<out Extras.Entry<*>>) : this(extras.associateBy { it.key.id })
+    constructor(extras: Array<out Extras.Entry<*>>) : this(extras.associateBy { it.key })
 
-    override val ids: Set<Extras.Id<*>> = extras.keys
+    override val keys: Set<Extras.Key<*>> = extras.keys
 
     override fun isEmpty(): Boolean = extras.isEmpty()
 
@@ -70,7 +66,7 @@ internal class ImmutableExtrasImpl private constructor(
     override val entries: Set<Extras.Entry<*>> = extras.values.toSet()
 
     override fun <T : Any> get(key: Extras.Key<T>): T? {
-        return extras[key.id]?.let { it.value as T }
+        return extras[key]?.let { it.value as T }
     }
 }
 
@@ -104,7 +100,7 @@ abstract class AbstractIterableExtras : IterableExtras {
 
 internal object EmptyExtras : AbstractIterableExtras() {
     override val size: Int = 0
-    override val ids: Set<Extras.Id<*>> = emptySet()
+    override val keys: Set<Extras.Key<*>> = emptySet()
     override val entries: Set<Extras.Entry<*>> = emptySet()
     override fun isEmpty(): Boolean = true
     override fun <T : Any> get(key: Extras.Key<T>): T? = null

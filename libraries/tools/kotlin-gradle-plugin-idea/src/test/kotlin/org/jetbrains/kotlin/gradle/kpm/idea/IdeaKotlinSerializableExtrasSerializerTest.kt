@@ -7,7 +7,7 @@ package org.jetbrains.kotlin.gradle.kpm.idea
 
 import org.jetbrains.kotlin.gradle.kpm.idea.IdeaKotlinExtrasSerializer.ErrorHandler.StreamLogger
 import org.jetbrains.kotlin.tooling.core.Extras
-import org.jetbrains.kotlin.tooling.core.extrasKeyOf
+import org.jetbrains.kotlin.tooling.core.keyOf
 import org.junit.Test
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
@@ -25,7 +25,7 @@ class IdeaKotlinSerializableExtrasSerializerTest {
     @Test
     fun `test - serialize and deserialize string`() {
         val serializer = IdeaKotlinExtrasSerializer.serializable<String>()
-        val key = extrasKeyOf<String>() + serializer
+        val key = keyOf<String>() + serializer
         assertEquals("Hello there", serializer.deserialize(key, serializer.serialize(key, "Hello there")))
     }
 
@@ -35,7 +35,7 @@ class IdeaKotlinSerializableExtrasSerializerTest {
         val logStream = PrintStream(byteStream)
 
         val serializer = IdeaKotlinExtrasSerializer.serializable<NotDeserializable>(StreamLogger(logStream))
-        val key = extrasKeyOf<NotDeserializable>() + serializer
+        val key = keyOf<NotDeserializable>() + serializer
 
         val data = serializer.serialize(key, NotDeserializable())
 
@@ -54,7 +54,7 @@ class IdeaKotlinSerializableExtrasSerializerTest {
         val logStream = PrintStream(byteStream)
 
         val serializer = IdeaKotlinExtrasSerializer.serializable<NotDeserializable>(StreamLogger(logStream))
-        val key = extrasKeyOf<NotDeserializable>() + serializer + object : IdeaKotlinExtrasSerializer.ErrorHandler<NotDeserializable> {
+        val key = keyOf<NotDeserializable>() + serializer + object : IdeaKotlinExtrasSerializer.ErrorHandler<NotDeserializable> {
             override fun onDeserializationFailure(key: Extras.Key<NotDeserializable>, error: Throwable): NotDeserializable {
                 return NotDeserializable(2411) // <- recovery!
             }

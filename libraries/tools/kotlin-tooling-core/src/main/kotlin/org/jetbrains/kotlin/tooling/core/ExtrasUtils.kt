@@ -10,25 +10,22 @@ package org.jetbrains.kotlin.tooling.core
  *
  * @param T The type of data that is stored in the extras container
  * ```kotlin
- * extrasKeyOf<Int>() == extrasKeyOf<Int>()
- * extrasKeyOf<Int>() != extrasKeyOf<String>()
- * extrasKeyOf<List<Int>>() == extrasKeyOf<List<Int>>()
- * extrasKeyOf<List<*>>() != extrasKeyOf<List<Int>>()
+ * keyOf<Int>() == keyOf<Int>()
+ * keyOf<Int>() != keyOf<String>()
+ * keyOf<List<Int>>() == keyOf<List<Int>>()
+ * keyOf<List<*>>() != keyOf<List<Int>>()
  * ```
  *
  * @param name This typed keys can also be distinguished with an additional name. In this case
  * ```kotlin
- * extrasKeyOf<Int>() != extrasKeyOf<Int>("a")
- * extrasKeyOf<Int>("a") == extrasKeyOf<Int>("a")
- * extrasKeyOf<Int>("b") != extrasKeyOf<Int>("a")
- * extrasKeyOf<String>("a") != extrasKeyOf<Int>("a")
+ * keyOf<Int>() != keyOf<Int>("a")
+ * keyOf<Int>("a") == keyOf<Int>("a")
+ * keyOf<Int>("b") != keyOf<Int>("a")
+ * keyOf<String>("a") != keyOf<Int>("a")
  * ```
  */
-inline fun <reified T : Any> extrasKeyOf(name: String? = null): Extras.Key<T> =
-    Extras.Key(extrasIdOf(name))
-
-inline fun <reified T : Any> extrasIdOf(name: String? = null): Extras.Id<T> =
-    Extras.Id(reifiedTypeSignatureOf(), name)
+inline fun <reified T : Any> keyOf(name: String? = null): Extras.Key<T> =
+    Extras.Key(reifiedTypeSignatureOf(), name)
 
 fun emptyExtras(): IterableExtras = EmptyExtras
 
@@ -55,12 +52,12 @@ operator fun IterableExtras.plus(entries: Iterable<Extras.Entry<*>>): IterableEx
  * Contrary to operations like [filterIsInstance], this operation is invariant under [T] and will
  * only filter for entries stored exactly as [T]
  */
-inline fun <reified T : Any> IterableExtras.filterType(): Iterable<Extras.Entry<T>> {
-    return filterType(reifiedTypeSignatureOf())
+inline fun <reified T : Any> IterableExtras.filterIsType(): Iterable<Extras.Entry<T>> {
+    return filterIsType(reifiedTypeSignatureOf())
 }
 
 @PublishedApi
 @Suppress("unchecked_cast")
-internal fun <T : Any> IterableExtras.filterType(type: ReifiedTypeSignature<T>): Iterable<Extras.Entry<T>> =
-    filter { entry -> entry.key.id.type == type } as Iterable<Extras.Entry<T>>
+internal fun <T : Any> IterableExtras.filterIsType(type: ReifiedTypeSignature<T>): Iterable<Extras.Entry<T>> =
+    filter { entry -> entry.key.type == type } as Iterable<Extras.Entry<T>>
 

@@ -20,7 +20,7 @@ import org.jetbrains.kotlin.gradle.plugin.mpp.pm20.KotlinIosX64Variant
 import org.jetbrains.kotlin.gradle.plugin.mpp.pm20.KotlinLinuxX64Variant
 import org.jetbrains.kotlin.gradle.plugin.mpp.pm20.KotlinPm20ProjectExtension
 import org.jetbrains.kotlin.gradle.plugin.mpp.pm20.jvm
-import org.jetbrains.kotlin.tooling.core.extrasKeyOf
+import org.jetbrains.kotlin.tooling.core.keyOf
 import unwrapProxyInstance
 import java.io.File
 import java.io.Serializable
@@ -81,8 +81,8 @@ class BackwardsCompatibilityDeserializationTest {
 
     @Test
     fun `test - attaching serializable extras`() {
-        val retainedModelKey = extrasKeyOf<RetainedModel>() + IdeaKotlinExtrasSerializer.serializable()
-        val unretainedModelKey = extrasKeyOf<UnretainedModel>()
+        val retainedModelKey = keyOf<RetainedModel>() + IdeaKotlinExtrasSerializer.serializable()
+        val unretainedModelKey = keyOf<UnretainedModel>()
 
         val project = ProjectBuilder.builder().build() as ProjectInternal
         project.plugins.apply(KotlinPm20PluginWrapper::class.java)
@@ -105,7 +105,7 @@ class BackwardsCompatibilityDeserializationTest {
         run {
             val deserializedCommonFragment = unwrapProxyInstance(deserializedCommonFragmentProxy)
             val extras = deserializedCommonFragment.serialize().deserialize<IdeaKotlinFragment>().extras
-            assertEquals(1, extras.ids.size)
+            assertEquals(1, extras.keys.size)
             assertEquals(RetainedModel(2411), extras[retainedModelKey])
             assertNull(extras[unretainedModelKey])
         }
