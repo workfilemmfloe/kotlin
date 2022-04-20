@@ -37135,6 +37135,12 @@ public class DiagnosticTestGenerated extends AbstractDiagnosticTest {
             }
 
             @Test
+            @TestMetadata("insideSAM.kt")
+            public void testInsideSAM() throws Exception {
+                runTest("compiler/testData/diagnostics/testsWithStdLib/experimental/insideSAM.kt");
+            }
+
+            @Test
             @TestMetadata("noRetentionAfter.kt")
             public void testNoRetentionAfter() throws Exception {
                 runTest("compiler/testData/diagnostics/testsWithStdLib/experimental/noRetentionAfter.kt");

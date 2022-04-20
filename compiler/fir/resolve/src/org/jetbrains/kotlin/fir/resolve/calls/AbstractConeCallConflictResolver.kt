@@ -187,7 +187,7 @@ abstract class AbstractConeCallConflictResolver(
                     if (!call.usesSAM) {
                         TypeWithConversion(argumentType)
                     } else {
-                        val functionType = samResolver.getFunctionTypeForPossibleSamType(argumentType)?.second
+                        val functionType = samResolver.getSamInfoForPossibleSamType(argumentType)?.second
                         if (functionType == null) TypeWithConversion(argumentType)
                         else TypeWithConversion(functionType, argumentType)
                     }
