@@ -64,8 +64,8 @@ class ConeEquivalentCallConflictResolver(
         }
         val firstSignature = createFlatSignature(firstCandidate, first)
         val secondSignature = createFlatSignature(secondCandidate, second)
-        return compareCallsByUsedArguments(firstSignature, secondSignature, false) &&
-                compareCallsByUsedArguments(secondSignature, firstSignature, false)
+        return compareCallsByUsedArguments(firstSignature, secondSignature, discriminateGenerics = false, useOriginalSamTypes = false) &&
+                compareCallsByUsedArguments(secondSignature, firstSignature, discriminateGenerics = false, useOriginalSamTypes = false)
     }
 
     private fun createFlatSignature(call: Candidate, declaration: FirCallableDeclaration): FlatSignature<Candidate> {
