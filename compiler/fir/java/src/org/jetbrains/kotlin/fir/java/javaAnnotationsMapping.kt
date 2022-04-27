@@ -12,10 +12,7 @@ import org.jetbrains.kotlin.fir.declarations.FirRegularClass
 import org.jetbrains.kotlin.fir.declarations.FirValueParameter
 import org.jetbrains.kotlin.fir.diagnostics.ConeSimpleDiagnostic
 import org.jetbrains.kotlin.fir.diagnostics.DiagnosticKind
-import org.jetbrains.kotlin.fir.expressions.FirAnnotation
-import org.jetbrains.kotlin.fir.expressions.FirExpression
-import org.jetbrains.kotlin.fir.expressions.FirFunctionCall
-import org.jetbrains.kotlin.fir.expressions.buildUnaryArgumentList
+import org.jetbrains.kotlin.fir.expressions.*
 import org.jetbrains.kotlin.fir.expressions.builder.*
 import org.jetbrains.kotlin.fir.java.declarations.buildJavaValueParameter
 import org.jetbrains.kotlin.fir.references.builder.buildErrorNamedReference
@@ -25,6 +22,7 @@ import org.jetbrains.kotlin.fir.resolve.diagnostics.ConeUnresolvedReferenceError
 import org.jetbrains.kotlin.fir.resolve.providers.getClassDeclaredPropertySymbols
 import org.jetbrains.kotlin.fir.resolve.providers.symbolProvider
 import org.jetbrains.kotlin.fir.symbols.impl.ConeClassLikeLookupTagImpl
+import org.jetbrains.kotlin.fir.symbols.impl.FirCallableSymbol
 import org.jetbrains.kotlin.fir.types.*
 import org.jetbrains.kotlin.fir.types.builder.buildErrorTypeRef
 import org.jetbrains.kotlin.fir.types.builder.buildResolvedTypeRef
@@ -86,11 +84,17 @@ internal fun JavaAnnotationArgument.toFirExpression(
         }
         is JavaEnumValueAnnotationArgument -> buildEnumCall(session, enumClassId, entryName)
         is JavaClassObjectAnnotationArgument -> buildGetClassCall {
+            val resolvedClassTypeRef = getReferencedType().toFirResolvedTypeRef(session, javaTypeParameterStack)
+            val resolvedTypeRef = buildResolvedTypeRef {
+                type = StandardClassIds.KClass.constructClassLikeType(arrayOf(resolvedClassTypeRef.type), false)
+            }
             argumentList = buildUnaryArgumentList(
                 buildClassReferenceExpression {
-                    classTypeRef = getReferencedType().toFirResolvedTypeRef(session, javaTypeParameterStack)
+                    classTypeRef = resolvedClassTypeRef
+                    typeRef = resolvedTypeRef
                 }
             )
+            typeRef = resolvedTypeRef
         }
         is JavaAnnotationAsAnnotationArgument -> getAnnotation().toFirAnnotationCall(session, javaTypeParameterStack)
         else -> buildErrorExpression {
@@ -132,6 +136,10 @@ private fun buildEnumCall(session: FirSession, classId: ClassId?, entryName: Nam
         }
         this.calleeReference = calleeReference ?: buildErrorNamedReference {
             diagnostic = ConeSimpleDiagnostic("Strange Java enum value: $classId.$entryName", DiagnosticKind.Java)
+        }
+        val resolvedReturnTypeRef = (calleeReference?.resolvedSymbol as? FirCallableSymbol<*>)?.resolvedReturnTypeRef
+        if (resolvedReturnTypeRef != null) {
+            this.typeRef = resolvedReturnTypeRef
         }
     }
 }

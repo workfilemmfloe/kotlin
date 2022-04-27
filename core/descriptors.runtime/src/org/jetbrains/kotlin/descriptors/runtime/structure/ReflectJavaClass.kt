@@ -120,6 +120,8 @@ class ReflectJavaClass(
 
     override val recordComponents: Collection<JavaRecordComponent>
         get() = (Java16SealedRecordLoader.loadGetRecordComponents(klass) ?: emptyArray()).map(::ReflectJavaRecordComponent)
+    override val isBinary: Boolean
+        get() = false
 
     override val isSealed: Boolean
         get() = Java16SealedRecordLoader.loadIsSealed(klass) ?: false

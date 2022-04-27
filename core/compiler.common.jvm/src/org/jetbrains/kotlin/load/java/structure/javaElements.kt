@@ -104,6 +104,8 @@ interface JavaClass : JavaClassifier, JavaTypeParameterListOwner, JavaModifierLi
     val fields: Collection<JavaField>
     val constructors: Collection<JavaConstructor>
     val recordComponents: Collection<JavaRecordComponent>
+
+    val isBinary: Boolean
     fun hasDefaultConstructor(): Boolean
 }
 

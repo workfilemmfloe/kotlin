@@ -362,7 +362,9 @@ object BuilderConfigurator : AbstractBuilderConfigurator<FirTreeBuilder>(FirTree
             varargArgumentsExpression,
             checkedSafeCallSubject,
             safeCallExpression,
-            arrayOfCall
+            arrayOfCall,
+            classReferenceExpression,
+            getClassCall
         )
         elementsWithDefaultTypeRef.forEach {
             val (element, name) = when (it) {

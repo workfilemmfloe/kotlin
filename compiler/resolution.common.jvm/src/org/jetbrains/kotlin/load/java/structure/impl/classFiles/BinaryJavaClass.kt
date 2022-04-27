@@ -49,6 +49,8 @@ class BinaryJavaClass(
     override val fields = arrayListOf<JavaField>()
     override val constructors = arrayListOf<JavaConstructor>()
     override val recordComponents = arrayListOf<JavaRecordComponent>()
+    override val isBinary: Boolean
+        get() = true
 
     override fun hasDefaultConstructor() = false // never: all constructors explicit in bytecode
 

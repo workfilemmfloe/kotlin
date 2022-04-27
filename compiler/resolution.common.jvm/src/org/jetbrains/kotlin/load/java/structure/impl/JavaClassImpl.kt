@@ -116,6 +116,9 @@ class JavaClassImpl(psiClass: PsiClass) : JavaClassifierImpl<PsiClass>(psiClass)
             return psi.recordComponents.convert(::JavaRecordComponentImpl)
         }
 
+    override val isBinary: Boolean
+        get() = false
+
     override fun hasDefaultConstructor() = !isInterface && constructors.isEmpty()
 
     override val isAbstract: Boolean
