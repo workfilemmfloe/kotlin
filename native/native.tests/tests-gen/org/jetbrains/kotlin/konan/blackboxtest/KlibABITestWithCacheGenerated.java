@@ -80,4 +80,10 @@ public class KlibABITestWithCacheGenerated extends AbstractNativeKlibABITest {
     public void testRemoveFunction() throws Exception {
         runTest("compiler/testData/klibABI/removeFunction/");
     }
+
+    @Test
+    @TestMetadata("removeProperty")
+    public void testRemoveProperty() throws Exception {
+        runTest("compiler/testData/klibABI/removeProperty/");
+    }
 }
