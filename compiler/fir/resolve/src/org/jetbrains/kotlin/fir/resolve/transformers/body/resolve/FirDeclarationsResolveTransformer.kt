@@ -571,17 +571,16 @@ open class FirDeclarationsResolveTransformer(transformer: FirBodyResolveTransfor
                 dataFlowAnalyzer.returnExpressionsOfAnonymousFunction(result)
                     .firstNotNullOfOrNull { (it as? FirExpression)?.resultType?.coneTypeSafe() }
 
-            if (returnType != null) {
-                result.transformReturnTypeRef(transformer, withExpectedType(returnType))
-            } else {
-                result.transformReturnTypeRef(
-                    transformer,
+            result.transformReturnTypeRef(
+                transformer,
+                if (returnType != null) {
+                    withExpectedType(returnType)
+                } else {
                     withExpectedType(buildErrorTypeRef {
                         diagnostic =
                             ConeSimpleDiagnostic("Unresolved lambda return type", DiagnosticKind.InferenceError)
                     })
-                )
-            }
+                })
         }
 
         return result
