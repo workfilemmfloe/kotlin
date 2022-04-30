@@ -21,12 +21,17 @@ class InstrumentJava(@Transient val javaInstrumentator: Configuration) : Action<
     override fun execute(task: Task) {
         require(task is JavaCompile) { "$task is not of type JavaCompile!" }
 
-        // Should be an existent folder with no java files inside
-        // Check Javac.execute() - https://github.com/apache/ant/blob/9943641/src/main/org/apache/tools/ant/taskdefs/Javac.java#L1086
-        // Also
+        // There is a requirement for Javac.execute() to have an existen non-empty directory as a source dir for the compilation
+        // even if compilation is disabled.
+        //
+        // So we create an empty dummy directory during the execution.
+        //
+        // See:
+        // Javac.execute() - https://github.com/apache/ant/blob/9943641/src/main/org/apache/tools/ant/taskdefs/Javac.java#L1086
         // InstrumentIdeaExtensions - https://github.com/JetBrains/intellij-community/blob/9c40bdd/java/compiler/javac2/src/com/intellij/ant/InstrumentIdeaExtensions.java
         // Javac2.compile() - https://github.com/JetBrains/intellij-community/blob/9c40bdd/java/compiler/javac2/src/com/intellij/ant/Javac2.java#L237
-        val existentFakeSrcPath = File(task.project.rootProject.projectDir, ".fleet").relativeTo(task.project.projectDir).path.replace("\\", "/")
+        val fakeInstrumentSrcDir = File(task.project.buildDir, "instrument_dummy_src")
+        val fakeInstrumentSrcRelativePath = fakeInstrumentSrcDir.relativeTo(task.project.projectDir).path.replace("\\", "/")
 
         task.doLast {
             task.ant.withGroovyBuilder {
@@ -38,24 +43,16 @@ class InstrumentJava(@Transient val javaInstrumentator: Configuration) : Action<
                 )
             }
 
-            val instrumentIdeaExtensionsTask = task.ant.withGroovyBuilder {
+            fakeInstrumentSrcDir.mkdirs()
+
+            task.ant.withGroovyBuilder {
                 "instrumentIdeaExtensions"(
-                    "srcdir" to existentFakeSrcPath,
+                    "srcdir" to fakeInstrumentSrcRelativePath,
                     "destdir" to task.destinationDirectory.asFile.get(),
                     "classpath" to task.classpath.asPath,
                     "includeantruntime" to false,
                     "instrumentNotNull" to true
                 )
-            }
-
-            val getFileListMethod = instrumentIdeaExtensionsTask!!.javaClass.getMethod("getFileList")
-            @Suppress("UNCHECKED_CAST")
-            val compileFiles = getFileListMethod.invoke(instrumentIdeaExtensionsTask) as Array<File>
-            if (compileFiles.isNotEmpty()) {
-                error(compileFiles.joinToString(
-                    prefix = "The should be an empty list of files to compile, but now files are:\n",
-                    separator = "   \n"
-                ))
             }
         }
     }
