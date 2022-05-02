@@ -20,7 +20,7 @@ data class ExportedModule(
 
 class ExportedNamespace(
     val name: String,
-    val declarations: List<ExportedDeclaration>
+    val declarations: List<ExportedDeclaration>,
 ) : ExportedDeclaration()
 
 data class ExportedFunction(
@@ -59,24 +59,40 @@ class ExportedProperty(
     val isField: Boolean,
     val irGetter: IrFunction?,
     val irSetter: IrFunction?,
-    val exportedObject: ExportedClass? = null,
 ) : ExportedDeclaration()
 
 
 // TODO: Cover all cases with frontend and disable error declarations
 class ErrorDeclaration(val message: String) : ExportedDeclaration()
 
-data class ExportedClass(
-    val name: String,
+
+sealed class ExportedClass : ExportedDeclaration() {
+    abstract val name: String
+    abstract val ir: IrClass
+    abstract val members: List<ExportedDeclaration>
+}
+
+data class ExportedRegularClass(
+    override val name: String,
     val isInterface: Boolean = false,
     val isAbstract: Boolean = false,
     val superClass: ExportedType? = null,
     val superInterfaces: List<ExportedType> = emptyList(),
     val typeParameters: List<String>,
-    val members: List<ExportedDeclaration>,
+    override val members: List<ExportedDeclaration>,
     val nestedClasses: List<ExportedClass>,
-    val ir: IrClass
-) : ExportedDeclaration()
+    override val ir: IrClass,
+) : ExportedClass()
+
+data class ExportedObject(
+    override val name: String,
+    val superClass: ExportedType? = null,
+    val superInterfaces: List<ExportedType> = emptyList(),
+    override val members: List<ExportedDeclaration>,
+    val nestedClasses: List<ExportedClass>,
+    override val ir: IrClass,
+    val irGetter: IrFunction
+) : ExportedClass()
 
 class ExportedParameter(
     val name: String,
