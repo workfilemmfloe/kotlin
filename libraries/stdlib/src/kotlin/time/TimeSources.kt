@@ -27,7 +27,7 @@ public abstract class AbstractLongTimeSource(protected val unit: DurationUnit) :
      */
     protected abstract fun read(): Long
 
-    private class LongTimeMark(private val startedAt: Long, private val timeSource: AbstractLongTimeSource, private val offset: Duration) : TimeMark {
+    private class LongTimeMark(private val startedAt: Long, private val timeSource: AbstractLongTimeSource, private val offset: Duration) : TimeMark() {
         override fun elapsedNow(): Duration = (timeSource.read() - startedAt).toDuration(timeSource.unit) - offset
         override fun plus(duration: Duration): TimeMark = LongTimeMark(startedAt, timeSource, offset + duration)
     }
@@ -49,7 +49,7 @@ public abstract class AbstractDoubleTimeSource(protected val unit: DurationUnit)
      */
     protected abstract fun read(): Double
 
-    private class DoubleTimeMark(private val startedAt: Double, private val timeSource: AbstractDoubleTimeSource, private val offset: Duration) : TimeMark {
+    private class DoubleTimeMark(private val startedAt: Double, private val timeSource: AbstractDoubleTimeSource, private val offset: Duration) : TimeMark() {
         override fun elapsedNow(): Duration = (timeSource.read() - startedAt).toDuration(timeSource.unit) - offset
         override fun plus(duration: Duration): TimeMark = DoubleTimeMark(startedAt, timeSource, offset + duration)
     }

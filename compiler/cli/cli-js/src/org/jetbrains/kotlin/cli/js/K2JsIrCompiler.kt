@@ -217,6 +217,18 @@ class K2JsIrCompiler : CLICompiler<K2JSCompilerArguments>() {
 
             var start = System.currentTimeMillis()
 
+            val cacheUpdater2 = CacheUpdater2(
+                includes,
+                libraries,
+                configurationJs,
+                cacheDirectories,
+                { IrFactoryImplForJsIC(WholeWorldStageController()) },
+                mainCallArguments,
+                ::buildCacheForModuleFiles
+            )
+            val grsd = cacheUpdater2.loadCachedModules()
+            grsd.forEach { messageCollector.report(INFO, ">>>>> $it") }
+
             val cacheUpdater = CacheUpdater(
                 includes,
                 libraries,

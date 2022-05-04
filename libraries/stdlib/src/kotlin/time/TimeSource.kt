@@ -50,8 +50,7 @@ public interface TimeSource {
          */
         @ExperimentalTime
         @SinceKotlin("1.7")
-        @JvmInline
-        public value class ValueTimeMark internal constructor(internal val reading: ValueTimeMarkReading) : TimeMark {
+        public class ValueTimeMark internal constructor(internal val reading: ValueTimeMarkReading) : TimeMark() {
             override fun elapsedNow(): Duration = MonotonicTimeSource.elapsedFrom(this)
             override fun plus(duration: Duration): ValueTimeMark = MonotonicTimeSource.adjustReading(this, duration)
             override fun minus(duration: Duration): ValueTimeMark = MonotonicTimeSource.adjustReading(this, -duration)
@@ -75,7 +74,7 @@ internal expect class ValueTimeMarkReading
  */
 @SinceKotlin("1.3")
 @ExperimentalTime
-public interface TimeMark {
+public abstract class TimeMark {
     /**
      * Returns the amount of time passed from this mark measured with the time source from which this mark was taken.
      *
@@ -120,7 +119,7 @@ public interface TimeMark {
      * Note that the value returned by this function can change on subsequent invocations.
      * If the time source is monotonic, it can change only from `false` to `true`, namely, when the time mark becomes behind the current point of the time source.
      */
-    public fun hasPassedNow(): Boolean = !elapsedNow().isNegative()
+    public open fun hasPassedNow(): Boolean = !elapsedNow().isNegative()
 
     /**
      * Returns false if this time mark has not passed according to the time source from which this mark was taken.
@@ -128,7 +127,7 @@ public interface TimeMark {
      * Note that the value returned by this function can change on subsequent invocations.
      * If the time source is monotonic, it can change only from `true` to `false`, namely, when the time mark becomes behind the current point of the time source.
      */
-    public fun hasNotPassedNow(): Boolean = elapsedNow().isNegative()
+    public open fun hasNotPassedNow(): Boolean = elapsedNow().isNegative()
 }
 
 
@@ -154,7 +153,7 @@ public inline operator fun TimeMark.compareTo(other: TimeMark): Int = throw Erro
 
 
 @ExperimentalTime
-private class AdjustedTimeMark(val mark: TimeMark, val adjustment: Duration) : TimeMark {
+private class AdjustedTimeMark(val mark: TimeMark, val adjustment: Duration) : TimeMark() {
     override fun elapsedNow(): Duration = mark.elapsedNow() - adjustment
 
     override fun plus(duration: Duration): TimeMark = AdjustedTimeMark(mark, adjustment + duration)

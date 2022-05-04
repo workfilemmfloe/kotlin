@@ -12,6 +12,7 @@ import org.jetbrains.kotlin.backend.common.serialization.codedInputStream
 import org.jetbrains.kotlin.backend.common.serialization.proto.IrFile
 import org.jetbrains.kotlin.ir.util.IdSignature
 import org.jetbrains.kotlin.library.KotlinLibrary
+import org.jetbrains.kotlin.library.impl.javaFile
 import org.jetbrains.kotlin.protobuf.CodedInputStream
 import org.jetbrains.kotlin.protobuf.CodedOutputStream
 import org.jetbrains.kotlin.protobuf.ExtensionRegistryLite
@@ -22,7 +23,12 @@ class IncrementalCache(private val library: KotlinLibrary, cachePath: String) : 
     companion object {
         private const val cacheFullInfoFile = "cache.full.info"
         private const val cacheFastInfoFile = "cache.fast.info"
-        private const val binaryAstSuffix = "binary.ast"
+        private const val binaryAstSuffix = "binary.ast.bin"
+
+        private const val fingerprintsFile = "fingerprints.bin"
+
+        private const val dependenciesSuffix = "dependencies.bin"
+        private const val signaturesSuffix = "signatures.bin"
     }
 
     class CacheFastInfo(
@@ -68,6 +74,75 @@ class IncrementalCache(private val library: KotlinLibrary, cachePath: String) : 
 
     var deletedSrcFiles: Set<String> = emptySet()
         private set
+
+
+    private val cachedFingerprints: Map<KotlinSourceFile, ICHash> by lazy {
+        File(cacheDir, fingerprintsFile).useCodedInputIfExists {
+            val fingerprintsCount = readInt32()
+            buildMap(fingerprintsCount) {
+                repeat(fingerprintsCount) {
+                    val file = KotlinSourceFile.fromProtoStream(this@useCodedInputIfExists)
+                    put(file, ICHash.fromProtoStream(this@useCodedInputIfExists))
+                }
+            }
+        } ?: emptyMap()
+    }
+
+    private class KotlinLibraryMetadata(
+        val sourceFiles: List<KotlinSourceFile>, val signatureDeserializers: Map<KotlinSourceFile, IdSignatureDeserializer>
+    )
+
+    private inline fun <E> buildListUntil(to: Int, builderAction: MutableList<E>.(Int) -> Unit): List<E> {
+        return buildList(to) { repeat(to) { builderAction(it) } }
+    }
+
+    private inline fun <K, V> buildMapUntil(to: Int, builderAction: MutableMap<K, V>.(Int) -> Unit): Map<K, V> {
+        return buildMap(to) { repeat(to) { builderAction(it) } }
+    }
+
+    private val kotlinLibraryMetadata: KotlinLibraryMetadata by lazy {
+        val filesCount = library.fileCount()
+        val extReg = ExtensionRegistryLite.newInstance()
+        val files = buildListUntil(filesCount) {
+            val fileProto = IrFile.parseFrom(library.file(it).codedInputStream, extReg)
+            add(KotlinSourceFile(fileProto.fileEntry.name))
+        }
+
+        val deserializers = buildMapUntil(filesCount) {
+            put(files[it], IdSignatureDeserializer(IrLibraryFileFromBytes(object : IrLibraryBytesSource() {
+                private fun err(): Nothing = error("Not supported")
+                override fun irDeclaration(index: Int): ByteArray = err()
+                override fun type(index: Int): ByteArray = err()
+                override fun signature(index: Int): ByteArray = library.signature(index, it)
+                override fun string(index: Int): ByteArray = library.string(index, it)
+                override fun body(index: Int): ByteArray = err()
+                override fun debugInfo(index: Int): ByteArray? = null
+            }), null))
+        }
+
+        KotlinLibraryMetadata(files, deserializers)
+    }
+
+    private val kotlinSourceDependencies = mutableMapOf<KotlinSourceFile, KotlinSourceFileDependencies>()
+
+    private fun KotlinSourceFile.loadDependencies() = kotlinSourceDependencies.getOrPut(this) {
+        getCacheFile(dependenciesSuffix).useCodedInputIfExists {
+            fun readDepends() = buildMapUntil(readInt32()) {
+                val libraryFile = KotlinLibraryFile.fromProtoStream(this@useCodedInputIfExists)
+                val depends = buildListUntil(readInt32()) {
+                    add(KotlinSourceFile.fromProtoStream(this@useCodedInputIfExists))
+                }
+                put(libraryFile, depends)
+            }
+
+            val dependencies = readDepends()
+            val reverseDependencies = readDepends()
+
+            KotlinSourceFileDependencies(dependencies, reverseDependencies)
+        } ?: KotlinSourceFileDependencies(emptyMap(), emptyMap())
+    }
+
+    private val kotlinSourceSignatures = mutableMapOf<KotlinSourceFile, KotlinSourceFileSignatures>()
 
     fun updateSignatureToIdMapping(srcPath: String, mapping: Map<IdSignature, Int>) {
         signatureToIdMapping[srcPath] = mapping
@@ -133,8 +208,7 @@ class IncrementalCache(private val library: KotlinLibrary, cachePath: String) : 
     fun fetchFullCacheData() {
         when (state) {
             CacheState.FETCHED_FULL -> return
-            CacheState.FETCHED_FOR_DEPENDENCY ->
-                error("Internal error: cache for ${library.libraryName} has been already fetched for dependency")
+            CacheState.FETCHED_FOR_DEPENDENCY -> error("Internal error: cache for ${library.libraryName} has been already fetched for dependency")
             CacheState.NON_LOADED -> {
                 state = CacheState.FETCHED_FULL
                 val signatureReaders = library.filesAndSigReaders()
@@ -193,6 +267,8 @@ class IncrementalCache(private val library: KotlinLibrary, cachePath: String) : 
                 if (deserializer != null) {
                     fingerprints[srcPath] = fingerprint
                     readFunctionHashes(deserializer)?.let { implementedInlineFunctions[srcPath] = it }
+                } else {
+                    skipFunctionHashes()
                 }
                 skipFunctionHashes()
             }
@@ -203,6 +279,8 @@ class IncrementalCache(private val library: KotlinLibrary, cachePath: String) : 
         val binaryAstFileName = "${File(srcFile).name}.${srcFile.stringHashForIC()}.$binaryAstSuffix"
         return File(cacheDir, binaryAstFileName)
     }
+
+    private fun KotlinSourceFile.getCacheFile(suffix: String) = File(cacheDir, "${File(path).name}.${path.stringHashForIC()}.$suffix")
 
     private fun CodedOutputStream.writeFunctionHashes(sigToIndexMap: Map<IdSignature, Int>, hashes: Map<IdSignature, ICHash>) {
         writeInt32NoTag(hashes.size)
@@ -259,12 +337,9 @@ class IncrementalCache(private val library: KotlinLibrary, cachePath: String) : 
     }
 
     override fun fetchArtifacts() = ModuleArtifact(
-        moduleName = cacheFastInfo.moduleName ?: error("Internal error: missing module name"),
-        fileArtifacts = fingerprints.keys.map {
+        moduleName = cacheFastInfo.moduleName ?: error("Internal error: missing module name"), fileArtifacts = fingerprints.keys.map {
             SrcFileArtifact(it, fragments[it], getBinaryAstPath(it))
-        },
-        artifactsDir = cacheDir,
-        forceRebuildJs = forceRebuildJs
+        }, artifactsDir = cacheDir, forceRebuildJs = forceRebuildJs
     )
 
     fun invalidate() {
@@ -312,5 +387,38 @@ class IncrementalCache(private val library: KotlinLibrary, cachePath: String) : 
         }
 
         return result
+    }
+
+    fun collectModifiedFiles(): Map<KotlinSourceFile, KotlinSourceFileDependencies> {
+        val flatHash = library.libraryFile.javaFile().fileHashForIC()
+        if (cacheFastInfo.flatHash == flatHash) {
+            return emptyMap()
+        }
+
+        val newFingerprints = kotlinLibraryMetadata.sourceFiles.mapIndexed { index, file -> file to library.fingerprint(index) }
+        val modifiedFiles = buildMap(newFingerprints.size) {
+            for ((file, fileNewFingerprint) in newFingerprints) {
+                if (cachedFingerprints[file] != fileNewFingerprint) {
+                    put(file, file.loadDependencies())
+                }
+            }
+        }
+
+        if (modifiedFiles.isNotEmpty()) {
+            // TODO: commit newFingerprints
+        }
+
+        return modifiedFiles
+    }
+
+    fun loadSourceFileSignatures(sourceFile: KotlinSourceFile) = kotlinSourceSignatures.getOrPut(sourceFile) {
+        sourceFile.getCacheFile(signaturesSuffix).useCodedInputIfExists {
+            val deserializer = kotlinLibraryMetadata.signatureDeserializers[sourceFile] ?: error("TODO write an error")
+            fun readSignatures() = buildListUntil(readInt32()) { add(deserializer.deserializeIdSignature(readInt32())) }
+
+            val importedSymbols = readSignatures()
+            val exportedSymbols = readSignatures()
+            KotlinSourceFileSignatures(importedSymbols, exportedSymbols)
+        } ?: KotlinSourceFileSignatures(emptyList(), emptyList())
     }
 }

@@ -7,9 +7,11 @@ package org.jetbrains.kotlin.ir.backend.js.ic
 
 import org.jetbrains.kotlin.backend.common.serialization.DeserializationStrategy
 import org.jetbrains.kotlin.config.CompilerConfiguration
+import org.jetbrains.kotlin.descriptors.konan.kotlinLibrary
 import org.jetbrains.kotlin.ir.backend.js.*
 import org.jetbrains.kotlin.ir.backend.js.lower.serialization.ir.JsIrLinker
 import org.jetbrains.kotlin.ir.declarations.IrFactory
+import org.jetbrains.kotlin.ir.declarations.IrFile
 import org.jetbrains.kotlin.ir.declarations.IrFunction
 import org.jetbrains.kotlin.ir.declarations.IrModuleFragment
 import org.jetbrains.kotlin.ir.util.*
@@ -19,10 +21,11 @@ import org.jetbrains.kotlin.konan.properties.propertyList
 import org.jetbrains.kotlin.library.KLIB_PROPERTY_DEPENDS
 import org.jetbrains.kotlin.library.KotlinLibrary
 import org.jetbrains.kotlin.name.FqName
+import org.jetbrains.kotlin.utils.addToStdlib.getOrPut
 import java.io.File
 
 
-fun interface CacheExecutor {
+fun interface CacheExecutor2 {
     fun execute(
         currentModule: IrModuleFragment,
         dependencies: Collection<IrModuleFragment>,
@@ -35,20 +38,20 @@ fun interface CacheExecutor {
     )
 }
 
-sealed class CacheUpdateStatus {
-    object FastPath : CacheUpdateStatus()
-    class NoDirtyFiles(val removed: Set<String>) : CacheUpdateStatus()
-    class Dirty(val removed: Set<String>, val updated: Set<String>, val updatedAll: Boolean) : CacheUpdateStatus()
+sealed class CacheUpdateStatus2 {
+    object FastPath : CacheUpdateStatus2()
+    class NoDirtyFiles(val removed: Set<String>) : CacheUpdateStatus2()
+    class Dirty(val removed: Set<String>, val updated: Set<String>, val updatedAll: Boolean) : CacheUpdateStatus2()
 }
 
-class CacheUpdater(
-    private val rootModule: String,
+class CacheUpdater2(
+    private val mainModule: String,
     private val allModules: Collection<String>,
     private val compilerConfiguration: CompilerConfiguration,
     private val icCachePaths: Collection<String>,
     private val irFactory: () -> IrFactory,
     private val mainArguments: List<String>?,
-    private val executor: CacheExecutor
+    private val executor: CacheExecutor2
 ) {
     private fun KotlinLibrary.moduleCanonicalName() = libraryFile.canonicalPath
 
@@ -190,7 +193,7 @@ class CacheUpdater(
             return incrementalCache.checkAndUpdateCacheFastInfo(flatHash, transHash)
         }
 
-        fun actualizeCacheForModule(): CacheUpdateStatus {
+        fun actualizeCacheForModule(): CacheUpdateStatus2 {
             // 1. Invalidate
             val dependencies = dependencyGraph[library]!!
 
@@ -211,7 +214,7 @@ class CacheUpdater(
             if (dirtySet.isEmpty()) {
                 // up-to-date
                 incrementalCache.commitCacheForRemovedSrcFiles()
-                return CacheUpdateStatus.NoDirtyFiles(removed)
+                return CacheUpdateStatus2.NoDirtyFiles(removed)
             }
 
             // 2. Build
@@ -232,21 +235,21 @@ class CacheUpdater(
             val updatedAll = dirtySet.size == incrementalCache.srcFilesInOrderFromKLib.size
             incrementalCache.commitCacheForRebuiltSrcFiles(currentIrModule.name.asString())
             // invalidated and re-built
-            return CacheUpdateStatus.Dirty(removed, dirtySet, updatedAll)
+            return CacheUpdateStatus2.Dirty(removed, dirtySet, updatedAll)
         }
     }
 
-    private fun loadLibraries(): Map<String, KotlinLibrary> {
+    private fun loadLibraries(): Map<KotlinLibraryFile, KotlinLibrary> {
         val allResolvedDependencies = jsResolveLibraries(
             allModules,
             compilerConfiguration[JSConfigurationKeys.REPOSITORIES] ?: emptyList(),
             compilerConfiguration[IrMessageLogger.IR_MESSAGE_LOGGER].toResolverLogger()
         )
 
-        return allResolvedDependencies.getFullList().associateBy { it.moduleCanonicalName() }
+        return allResolvedDependencies.getFullList().associateBy { KotlinLibraryFile(it) }
     }
 
-    private fun buildDependenciesGraph(libraries: Map<String, KotlinLibrary>): Map<KotlinLibrary, List<KotlinLibrary>> {
+    private fun buildDependenciesGraph(libraries: Map<KotlinLibraryFile, KotlinLibrary>): Map<KotlinLibrary, List<KotlinLibrary>> {
         val nameToKotlinLibrary: Map<String, KotlinLibrary> = libraries.values.associateBy { it.moduleName }
         return libraries.values.associateWith {
             it.manifestProperties.propertyList(KLIB_PROPERTY_DEPENDS, escapeInQuotes = true).map { depName ->
@@ -255,46 +258,118 @@ class CacheUpdater(
         }
     }
 
-    fun actualizeCaches(callback: (CacheUpdateStatus, String) -> Unit): List<ModuleArtifact> {
-        val libraries = loadLibraries()
-        val dependencyGraph = buildDependenciesGraph(libraries)
-        val configHash = compilerConfiguration.configHashForIC()
+//    fun actualizeCaches(callback: (CacheUpdateStatus2, String) -> Unit): List<ModuleArtifact> {
+//        val libraries = loadLibraries()
+//        val dependencyGraph = buildDependenciesGraph(libraries)
+//        val configHash = compilerConfiguration.configHashForIC()
+//
+//        val cacheMap = libraries.values.zip(icCachePaths).toMap()
+//
+//        val klibIncrementalCaches = mutableMapOf<KotlinLibrary, IncrementalCache>()
+//
+//        val rootModuleCanonical = File(mainModule).canonicalPath
+//        val mainLibrary = libraries[rootModuleCanonical] ?: error("Main library not found in libraries: $rootModuleCanonical")
+//
+//        val visitedLibraries = mutableSetOf<KotlinLibrary>()
+//        fun visitDependency(library: KotlinLibrary) {
+//            if (library in visitedLibraries) return
+//            visitedLibraries.add(library)
+//
+//            val libraryDeps = dependencyGraph[library] ?: error("Unknown library ${library.libraryName}")
+//            libraryDeps.forEach { visitDependency(it) }
+//
+//            val cachePath = cacheMap[library] ?: error("Unknown cache for library ${library.libraryName}")
+//            val incrementalCache = IncrementalCache(library, cachePath)
+//            klibIncrementalCaches[library] = incrementalCache
+//
+//            incrementalCache.invalidateCacheForNewConfig(configHash)
+//            val cacheUpdater = KLibCacheUpdater(library, dependencyGraph, incrementalCache, klibIncrementalCaches)
+//            val updateStatus = when {
+//                cacheUpdater.checkLibrariesHash() -> CacheUpdateStatus2.FastPath
+//                else -> cacheUpdater.actualizeCacheForModule()
+//            }
+//            callback(updateStatus, library.libraryFile.path)
+//        }
+//
+//        visitDependency(mainLibrary)
+//        return klibIncrementalCaches.map { it.value.fetchArtifacts() }
+//    }
 
-        val cacheMap = libraries.values.zip(icCachePaths).toMap()
+    private val libraries = loadLibraries()
+    private val dependencyGraph = buildDependenciesGraph(libraries)
+    private val configHash = compilerConfiguration.configHashForIC()
 
-        val klibIncrementalCaches = mutableMapOf<KotlinLibrary, IncrementalCache>()
+    private val cacheMap = libraries.values.zip(icCachePaths).toMap()
 
-        val visitedLibraries = mutableSetOf<KotlinLibrary>()
-        fun visitDependency(library: KotlinLibrary) {
-            if (library in visitedLibraries) return
-            visitedLibraries.add(library)
+    private val mainLibraryFile = KotlinLibraryFile(File(mainModule).canonicalPath)
+    private val mainLibrary = libraries[mainLibraryFile] ?: error("Main library not found in libraries: ${mainLibraryFile.path}")
 
-            val libraryDeps = dependencyGraph[library] ?: error("Unknown library ${library.libraryName}")
-            libraryDeps.forEach { visitDependency(it) }
+    private val incrementalCaches = libraries.entries.associate { (libFile, lib) ->
+        val cachePath = cacheMap[lib] ?: error("Cannot find cache path for library ${lib.libraryName}")
+        libFile to IncrementalCache(lib, cachePath).apply { invalidateCacheForNewConfig(configHash) }
+    }
 
-            val cachePath = cacheMap[library] ?: error("Unknown cache for library ${library.libraryName}")
-            val incrementalCache = IncrementalCache(library, cachePath)
-            klibIncrementalCaches[library] = incrementalCache
-
-            incrementalCache.invalidateCacheForNewConfig(configHash)
-            val cacheUpdater = KLibCacheUpdater(library, dependencyGraph, incrementalCache, klibIncrementalCaches)
-            val updateStatus = when {
-                cacheUpdater.checkLibrariesHash() -> CacheUpdateStatus.FastPath
-                else -> cacheUpdater.actualizeCacheForModule()
-            }
-            callback(updateStatus, library.libraryFile.path)
+    private fun buildLoadingSymbols(
+        loadingDirtyFiles: Map<KotlinLibraryFile, Map<KotlinSourceFile, KotlinSourceFileDependencies>>
+    ): Map<KotlinLibraryFile, Map<KotlinSourceFile, Set<IdSignature>>> {
+        fun isSourceFileModified(libFile: KotlinLibraryFile, sourceFile: KotlinSourceFile): Boolean {
+            return loadingDirtyFiles[libFile]?.containsKey(sourceFile) == true
         }
 
-        val rootModuleCanonical = File(rootModule).canonicalPath
-        val mainLibrary = libraries[rootModuleCanonical] ?: error("Main library not found in libraries: $rootModuleCanonical")
-        visitDependency(mainLibrary)
-        return klibIncrementalCaches.map { it.value.fetchArtifacts() }
+        val loadingSignatures = mutableMapOf<KotlinLibraryFile, MutableMap<KotlinSourceFile, MutableSet<IdSignature>>>()
+
+        for ((lib, files) in loadingDirtyFiles) {
+            if (lib == mainLibraryFile) {
+                continue
+            }
+            val loadingLibSignatures: MutableMap<KotlinSourceFile, MutableSet<IdSignature>> by lazy {
+                loadingSignatures.getOrPut(lib) { mutableMapOf() }
+            }
+            for ((srcFile, dependencies) in files) {
+                val loadingFileSignatures: MutableSet<IdSignature> by lazy {
+                    loadingLibSignatures.getOrPut(srcFile) { mutableSetOf() }
+                }
+                for ((dependentLib, dependentFiles) in dependencies.reverseDependencies) {
+                    val dependentCache = incrementalCaches[dependentLib] ?: error("TODO message")
+                    for (dependentFile in dependentFiles) {
+                        if (!isSourceFileModified(dependentLib, dependentFile)) {
+                            val signatures = dependentCache.loadSourceFileSignatures(dependentFile)
+                            loadingFileSignatures += signatures.importedSymbols
+                        }
+                    }
+                }
+            }
+        }
+        return loadingSignatures
+    }
+
+    fun loadCachedModules(): List<String> {
+        val modifiedFiles = incrementalCaches.entries.associate { (lib, cache) -> lib to cache.collectModifiedFiles() }
+
+        val loadingSignatures = buildLoadingSymbols(modifiedFiles)
+        // get reverse depends for modified files
+
+
+        var s1 = System.currentTimeMillis()
+
+        val jsIrLinkerLoader = JsIrLinkerLoader(compilerConfiguration, mainLibrary, dependencyGraph, irFactory())
+        val (jsIrLinker, irModules) = jsIrLinkerLoader.loadIr(loadingSignatures)
+
+        var s2 = System.currentTimeMillis()
+
+        //  KotlinFileHeader.rebuildDependencies(jsIrLinker, irModules, modifiedFiles)
+
+        var s3 = System.currentTimeMillis()
+
+        return listOf(
+            "Ir loading: ${s2 - s1}ms", "Graph building: ${s3 - s2}ms"
+        )
     }
 }
 
 
 // Used for tests only
-fun rebuildCacheForDirtyFiles(
+fun rebuildCacheForDirtyFiles2(
     library: KotlinLibrary,
     configuration: CompilerConfiguration,
     dependencyGraph: Map<KotlinLibrary, List<KotlinLibrary>>,
@@ -308,25 +383,18 @@ fun rebuildCacheForDirtyFiles(
     val (jsIrLinker, currentIrModule, irModules) = jsIrLinkerProcessor.processJsIrLinker(dirtyFiles)
 
     buildCacheForModuleFiles(
-        currentIrModule,
-        irModules,
-        jsIrLinker,
-        configuration,
-        dirtyFiles,
-        artifactCache,
-        exportedDeclarations,
-        mainArguments
+        currentIrModule, irModules, jsIrLinker, configuration, dirtyFiles, artifactCache, exportedDeclarations, mainArguments
     )
     return currentIrModule.name.asString()
 }
 
 @Suppress("UNUSED_PARAMETER")
-fun buildCacheForModuleFiles(
+fun buildCacheForModuleFiles2(
     currentModule: IrModuleFragment,
     dependencies: Collection<IrModuleFragment>,
     deserializer: JsIrLinker,
     configuration: CompilerConfiguration,
-    dirtyFiles: Collection<String>?, // if null consider the whole module dirty
+    dirtyFiles: Collection<String>?,
     artifactCache: ArtifactCache,
     exportedDeclarations: Set<FqName>,
     mainArguments: List<String>?,

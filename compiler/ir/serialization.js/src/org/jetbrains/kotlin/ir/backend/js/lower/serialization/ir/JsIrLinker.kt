@@ -12,6 +12,7 @@ import org.jetbrains.kotlin.descriptors.ModuleDescriptor
 import org.jetbrains.kotlin.ir.IrBuiltIns
 import org.jetbrains.kotlin.ir.builders.TranslationPluginContext
 import org.jetbrains.kotlin.ir.declarations.IrModuleFragment
+import org.jetbrains.kotlin.ir.linkage.IrDeserializer
 import org.jetbrains.kotlin.ir.types.IrTypeSystemContextImpl
 import org.jetbrains.kotlin.ir.util.*
 import org.jetbrains.kotlin.library.IrLibrary
@@ -89,4 +90,11 @@ class JsIrLinker(
         override val typeTranslator: TypeTranslator,
         override val irBuiltIns: IrBuiltIns,
     ) : TranslationPluginContext
+
+//    fun addSignatures(moduleName: String, s: List<Int>) {
+//        val moduleDeserializer
+//        for (sig in signatures) {
+//            deserializersForModules[name]!!.addModuleReachableTopLevel(sig)
+//        }
+//    }
 }
