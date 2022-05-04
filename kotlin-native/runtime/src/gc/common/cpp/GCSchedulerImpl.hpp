@@ -7,15 +7,13 @@
 
 #include "GCScheduler.hpp"
 
-#include <unordered_set>
-
 #include "Clock.hpp"
+#include "StackTrace.hpp"
+#include "std_support/UnorderedSet.hpp"
 
 #ifndef KONAN_NO_THREADS
 #include "RepeatedTimer.hpp"
 #endif
-
-#include "StackTrace.hpp"
 
 namespace kotlin::gc::internal {
 
@@ -115,7 +113,7 @@ private:
 
     // TODO: Consider replacing mutex + global set with thread local sets sychronized on STW.
     std::mutex mutex_;
-    std::unordered_set<SafePointID> metSafePoints_;
+    std_support::unordered_set<SafePointID> metSafePoints_;
 };
 
 class GCEmptySchedulerData : public gc::GCSchedulerData {
