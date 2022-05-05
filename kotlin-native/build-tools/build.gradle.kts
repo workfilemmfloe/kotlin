@@ -87,6 +87,10 @@ gradlePlugin {
             id = "runtime-testing"
             implementationClass = "org.jetbrains.kotlin.testing.native.RuntimeTestingPlugin"
         }
+        create("compilationDatabase") {
+            id = "compilation-database"
+            implementationClass = "org.jetbrains.kotlin.cpp.CompilationDatabasePlugin"
+        }
     }
 }
 
