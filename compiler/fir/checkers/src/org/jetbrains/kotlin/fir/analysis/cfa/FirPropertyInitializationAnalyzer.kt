@@ -76,19 +76,20 @@ object FirPropertyInitializationAnalyzer : AbstractFirPropertyInitializationChec
             symbol: FirPropertySymbol,
             node: VariableAssignmentNode
         ): Boolean {
-            if (symbol.fir.isVal && node.fir in capturedWrites) {
-                if (symbol.fir.isLocal) {
-                    reporter.reportOn(node.fir.lValue.source, FirErrors.CAPTURED_VAL_INITIALIZATION, symbol, context)
-                } else {
-                    reporter.reportOn(node.fir.lValue.source, FirErrors.CAPTURED_MEMBER_VAL_INITIALIZATION, symbol, context)
-                }
+            if (!symbol.fir.isVal) return false
+
+            if (node.fir in capturedWrites) {
+                val error = if (symbol.fir.isLocal) FirErrors.CAPTURED_VAL_INITIALIZATION else FirErrors.CAPTURED_MEMBER_VAL_INITIALIZATION
+                reporter.reportOn(node.fir.lValue.source, error, symbol, context)
                 return true
             }
+
             val kind = info[symbol] ?: EventOccurrencesRange.ZERO
-            if (symbol.fir.isVal && (symbol is FirSyntheticPropertySymbol || kind.canBeRevisited())) {
+            if (symbol.hasInitializer || symbol is FirSyntheticPropertySymbol || kind.canBeRevisited()) {
                 reporter.reportOn(node.fir.lValue.source, FirErrors.VAL_REASSIGNMENT, symbol, context)
                 return true
             }
+
             return false
         }
 
@@ -111,7 +112,7 @@ object FirPropertyInitializationAnalyzer : AbstractFirPropertyInitializationChec
             node: QualifiedAccessNode
         ): Boolean {
             val kind = info[symbol] ?: EventOccurrencesRange.ZERO
-            if (symbol !is FirSyntheticPropertySymbol && !kind.isDefinitelyVisited()) {
+            if (symbol.isLocal && symbol !is FirSyntheticPropertySymbol && !kind.isDefinitelyVisited()) {
                 reporter.reportOn(node.fir.source, FirErrors.UNINITIALIZED_VARIABLE, symbol, context)
                 return true
             }

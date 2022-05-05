@@ -13,7 +13,13 @@ import org.jetbrains.kotlin.name.CallableId
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
 
-sealed class FirVariableSymbol<E : FirVariable>(override val callableId: CallableId) : FirCallableSymbol<E>()
+sealed class FirVariableSymbol<E : FirVariable>(override val callableId: CallableId) : FirCallableSymbol<E>() {
+    val isVal: Boolean
+        get() = fir.isVal
+
+    val isVar: Boolean
+        get() = fir.isVar
+}
 
 open class FirPropertySymbol(
     callableId: CallableId,
@@ -47,12 +53,6 @@ open class FirPropertySymbol(
             ensureResolved(FirResolvePhase.BODY_RESOLVE)
             return fir.controlFlowGraphReference
         }
-
-    val isVal: Boolean
-        get() = fir.isVal
-
-    val isVar: Boolean
-        get() = fir.isVar
 }
 
 class FirIntersectionOverridePropertySymbol(
@@ -61,12 +61,6 @@ class FirIntersectionOverridePropertySymbol(
 ) : FirPropertySymbol(callableId), FirIntersectionCallableSymbol
 
 class FirBackingFieldSymbol(callableId: CallableId) : FirVariableSymbol<FirBackingField>(callableId) {
-    val isVal: Boolean
-        get() = fir.isVal
-
-    val isVar: Boolean
-        get() = fir.isVar
-
     val propertySymbol: FirPropertySymbol
         get() = fir.propertySymbol
 
@@ -92,7 +86,6 @@ class FirValueParameterSymbol(name: Name) : FirVariableSymbol<FirValueParameter>
 
     val isVararg: Boolean
         get() = fir.isVararg
-
 }
 
 class FirErrorPropertySymbol(

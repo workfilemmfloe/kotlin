@@ -116,8 +116,8 @@ class AnonymousInitializers(var a: String, val b: String) {
         a = "30"
         a = "s"
 
-        b = "3"
-        b = "tt" //repeat for b
+        <!VAL_REASSIGNMENT!>b<!> = "3"
+        <!VAL_REASSIGNMENT!>b<!> = "tt" //repeat for b
     }
 
     val i: Int
@@ -127,14 +127,14 @@ class AnonymousInitializers(var a: String, val b: String) {
 
     init {
         x = 11
-        z = 10
+        <!VAL_REASSIGNMENT!>z<!> = 10
     }
 
     val j: Int
     get() = 20
 
     init {
-        i = 13
+        <!VAL_REASSIGNMENT!>i<!> = 13
         j = 34
     }
 
@@ -272,7 +272,7 @@ fun foo() {
         }
         fun foo() {
             y = 10
-            z = 13
+            <!VAL_REASSIGNMENT!>z<!> = 13
         }
     }
 }
@@ -338,11 +338,11 @@ class M() {
 }
 
 fun test(m : M) {
-    m.x = 23
+    m.<!VAL_REASSIGNMENT!>x<!> = 23
     m.y = 23
 }
 
 fun test1(m : M) {
-    m.x++
+    m.<!VAL_REASSIGNMENT!>x<!>++
     m.y--
 }

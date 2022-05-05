@@ -86,6 +86,7 @@ object CanBeValChecker : AbstractFirPropertyInitializationChecker() {
 
         override fun visitVariableAssignmentNode(node: VariableAssignmentNode) {
             val symbol = node.fir.calleeReference.resolvedSymbol as? FirPropertySymbol ?: return
+            if (!symbol.isLocal) return
             if (symbol !in localProperties) return
             unprocessedProperties.remove(symbol)
 
