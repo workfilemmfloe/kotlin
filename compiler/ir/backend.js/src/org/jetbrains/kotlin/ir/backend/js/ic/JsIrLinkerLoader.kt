@@ -99,7 +99,9 @@ internal class JsIrLinkerLoader(
         return Triple(jsIrLinker, currentIrModule, irModules.map { it.first })
     }
 
-    fun loadIr(modifiedFiles: Map<KotlinLibraryFile, Map<KotlinSourceFile, Collection<IdSignature>>>): Pair<JsIrLinker, Map<KotlinLibraryFile, IrModuleFragment>> {
+    class LoadedJsIr(val linker: JsIrLinker, val loadedFragments: Map<KotlinLibraryFile, IrModuleFragment>)
+
+    fun loadIr(modifiedFiles: KotlinSourceFileMap<KotlinSourceFileExports>): LoadedJsIr {
         val loadedModules = loadModules()
         val jsIrLinker = createLinker(loadedModules)
 
@@ -109,7 +111,7 @@ internal class JsIrLinkerLoader(
                 library -> DeserializationStrategy.ALL
                 else -> DeserializationStrategy.EXPLICITLY_EXPORTED
             }
-            val modified = modifiedFiles[libraryFile] ?: emptyMap()
+            val modified = modifiedFiles.libFiles(libraryFile)
             libraryFile to jsIrLinker.deserializeIrModuleHeader(descriptor, module, {
                 when (KotlinSourceFile(it)) {
                     in modified -> modifiedStrategy
@@ -120,11 +122,11 @@ internal class JsIrLinkerLoader(
 
         jsIrLinker.init(null, emptyList())
 
-        for ((loadingLibFile, loadingSourceFiles) in modifiedFiles) {
+        for ((loadingLibFile, loadingSrcFiles) in modifiedFiles) {
             val loadingIrModule = irModules[loadingLibFile] ?: error("TODO make an error")
             val moduleDeserializer = jsIrLinker.moduleDeserializer(loadingIrModule.descriptor)
-            for (loadingSignatures in loadingSourceFiles.values) {
-                for (loadingSignature in loadingSignatures) {
+            for (loadingSrcFileHeader in loadingSrcFiles.values) {
+                for (loadingSignature in loadingSrcFileHeader.exportedSignatures) {
                     if (loadingSignature in moduleDeserializer) {
                         moduleDeserializer.addModuleReachableTopLevel(loadingSignature)
                     }
@@ -134,6 +136,6 @@ internal class JsIrLinkerLoader(
 
         ExternalDependenciesGenerator(jsIrLinker.symbolTable, listOf(jsIrLinker)).generateUnboundSymbolsAsDependencies()
         jsIrLinker.postProcess()
-        return jsIrLinker to irModules
+        return LoadedJsIr(jsIrLinker, irModules)
     }
 }
