@@ -101,7 +101,7 @@ internal class JsIrLinkerLoader(
 
     class LoadedJsIr(val linker: JsIrLinker, val loadedFragments: Map<KotlinLibraryFile, IrModuleFragment>)
 
-    fun loadIr(modifiedFiles: KotlinSourceFileMap<KotlinSourceFileExports>): LoadedJsIr {
+    fun loadIr(modifiedFiles: KotlinSourceFileMap<Collection<IdSignature>>): LoadedJsIr {
         val loadedModules = loadModules()
         val jsIrLinker = createLinker(loadedModules)
 
@@ -125,8 +125,8 @@ internal class JsIrLinkerLoader(
         for ((loadingLibFile, loadingSrcFiles) in modifiedFiles) {
             val loadingIrModule = irModules[loadingLibFile] ?: error("TODO make an error")
             val moduleDeserializer = jsIrLinker.moduleDeserializer(loadingIrModule.descriptor)
-            for (loadingSrcFileHeader in loadingSrcFiles.values) {
-                for (loadingSignature in loadingSrcFileHeader.exportedSignatures) {
+            for (loadingSrcFileSignatures in loadingSrcFiles.values) {
+                for (loadingSignature in loadingSrcFileSignatures) {
                     if (loadingSignature in moduleDeserializer) {
                         moduleDeserializer.addModuleReachableTopLevel(loadingSignature)
                     }
