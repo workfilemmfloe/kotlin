@@ -11,9 +11,7 @@ import org.jetbrains.kotlin.backend.konan.serialization.KonanIrLinker
 import org.jetbrains.kotlin.backend.konan.serialization.KonanManglerIr
 import org.jetbrains.kotlin.descriptors.DescriptorVisibilities
 import org.jetbrains.kotlin.ir.IrElement
-import org.jetbrains.kotlin.ir.declarations.IrClass
-import org.jetbrains.kotlin.ir.declarations.IrExternalPackageFragment
-import org.jetbrains.kotlin.ir.declarations.IrFunction
+import org.jetbrains.kotlin.ir.declarations.*
 import org.jetbrains.kotlin.ir.expressions.IrCall
 import org.jetbrains.kotlin.ir.expressions.IrFunctionReference
 import org.jetbrains.kotlin.ir.expressions.IrPropertyReference
@@ -59,9 +57,21 @@ internal class CacheInfoBuilder(private val context: Context, private val module
     }
 
     private fun trackCallees(irFunction: IrFunction) {
-        irFunction.acceptVoid(object : IrElementVisitorVoid {
+        irFunction.acceptChildrenVoid(object : IrElementVisitorVoid {
             override fun visitElement(element: IrElement) {
                 element.acceptChildrenVoid(this)
+            }
+
+            override fun visitDeclaration(declaration: IrDeclarationBase) {
+                // Skip nested declarations - they will be deserialized entirely and there won't be any problems with their private symbols.
+            }
+
+            override fun visitValueParameter(declaration: IrValueParameter) {
+                declaration.acceptChildrenVoid(this)
+            }
+
+            override fun visitVariable(declaration: IrVariable) {
+                declaration.acceptChildrenVoid(this)
             }
 
             private fun processFunction(function: IrFunction) {
