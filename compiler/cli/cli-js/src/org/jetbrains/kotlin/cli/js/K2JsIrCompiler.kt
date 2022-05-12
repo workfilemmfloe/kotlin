@@ -224,7 +224,7 @@ class K2JsIrCompiler : CLICompiler<K2JSCompilerArguments>() {
                 cacheDirectories,
                 { IrFactoryImplForJsIC(WholeWorldStageController()) },
                 mainCallArguments,
-                ::buildCacheForModuleFiles
+                ::buildCacheForModuleFiles2
             )
             val grsd = cacheUpdater2.loadCachedModules()
             grsd.forEach { messageCollector.report(INFO, ">>>>> $it") }

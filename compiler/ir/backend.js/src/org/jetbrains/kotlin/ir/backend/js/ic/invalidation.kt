@@ -331,14 +331,14 @@ fun buildCacheForModuleFiles(
     exportedDeclarations: Set<FqName>,
     mainArguments: List<String>?,
 ) {
-    compileWithIC(
-        currentModule,
-        configuration = configuration,
-        deserializer = deserializer,
-        dependencies = dependencies,
-        mainArguments = mainArguments,
-        exportedDeclarations = exportedDeclarations,
-        filesToLower = dirtyFiles?.toSet(),
-        artifactCache = artifactCache,
-    )
+//    compileWithIC(
+//        currentModule,
+//        configuration = configuration,
+//        deserializer = deserializer,
+//        dependencies = dependencies,
+//        mainArguments = mainArguments,
+//        exportedDeclarations = exportedDeclarations,
+//        filesToLower = dirtyFiles?.toSet(),
+//        artifactCache = artifactCache,
+//    )
 }

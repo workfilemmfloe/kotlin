@@ -8,6 +8,7 @@ import org.jetbrains.kotlin.config.CompilerConfiguration
 import org.jetbrains.kotlin.ir.backend.js.*
 import org.jetbrains.kotlin.ir.backend.js.lower.serialization.ir.JsIrLinker
 import org.jetbrains.kotlin.ir.declarations.IrFactory
+import org.jetbrains.kotlin.ir.declarations.IrFile
 import org.jetbrains.kotlin.ir.declarations.IrFunction
 import org.jetbrains.kotlin.ir.declarations.IrModuleFragment
 import org.jetbrains.kotlin.ir.util.*
@@ -23,13 +24,12 @@ import java.io.File
 fun interface CacheExecutor2 {
     fun execute(
         currentModule: IrModuleFragment,
-        dependencies: Collection<IrModuleFragment>,
+        allModules: Collection<IrModuleFragment>,
         deserializer: JsIrLinker,
         configuration: CompilerConfiguration,
-        dirtyFiles: Collection<String>?, // if null consider the whole module dirty
-        artifactCache: ArtifactCache,
+        dirtyFiles: Collection<IrFile>,
         exportedDeclarations: Set<FqName>,
-        mainArguments: List<String>?,
+        mainArguments: List<String>?
     )
 }
 
@@ -336,9 +336,20 @@ class CacheUpdater2(
         commitCacheMetadata(loadedIr.linker, loadedIr.loadedFragments)
         doMeasure("commitCacheMetadata")
 
-//        executor.execute(
-//            loadedIr.loadedFragments[mainLibraryFile]!!, loadedIr.loadedFragments.values, loadedIr.linker, compilerConfiguration, null, incrementalCache, emptySet(), mainArguments
-//        )
+        val mainModule = loadedIr.loadedFragments[mainLibraryFile] ?: error("TODO error")
+        val allModules = loadedIr.loadedFragments.values
+
+        val dirtyFiles = loadedIr.loadedFragments.flatMap {
+            val libDirtyFiles = dirtyFileExports.libFiles(it.key)
+            if (libDirtyFiles.isEmpty()) {
+                emptyList()
+            } else {
+                it.value.files.filter { file -> KotlinSourceFile(file) in libDirtyFiles }
+            }
+        }
+
+        executor.execute(mainModule, allModules, loadedIr.linker, compilerConfiguration, dirtyFiles, emptySet(), mainArguments)
+        doMeasure("lowering things")
 //
         return profile
     }
@@ -346,44 +357,41 @@ class CacheUpdater2(
 
 
 // Used for tests only
-fun rebuildCacheForDirtyFiles2(
-    library: KotlinLibrary,
-    configuration: CompilerConfiguration,
-    dependencyGraph: Map<KotlinLibrary, List<KotlinLibrary>>,
-    dirtyFiles: Collection<String>?,
-    artifactCache: ArtifactCache,
-    irFactory: IrFactory,
-    exportedDeclarations: Set<FqName>,
-    mainArguments: List<String>?,
-): String {
-    val jsIrLinkerProcessor = JsIrLinkerLoader(configuration, library, dependencyGraph, irFactory)
-    val (jsIrLinker, currentIrModule, irModules) = jsIrLinkerProcessor.processJsIrLinker(dirtyFiles)
+//fun rebuildCacheForDirtyFiles2(
+//    library: KotlinLibrary,
+//    configuration: CompilerConfiguration,
+//    dependencyGraph: Map<KotlinLibrary, List<KotlinLibrary>>,
+//    dirtyFiles: Collection<String>?,
+//    artifactCache: ArtifactCache,
+//    irFactory: IrFactory,
+//    exportedDeclarations: Set<FqName>,
+//    mainArguments: List<String>?,
+//): String {
+//    val jsIrLinkerProcessor = JsIrLinkerLoader(configuration, library, dependencyGraph, irFactory)
+//    val (jsIrLinker, currentIrModule, irModules) = jsIrLinkerProcessor.processJsIrLinker(dirtyFiles)
+//
+//    buildCacheForModuleFiles(
+//        currentIrModule, irModules, jsIrLinker, configuration, dirtyFiles, artifactCache, exportedDeclarations, mainArguments
+//    )
+//    return currentIrModule.name.asString()
+//}
 
-    buildCacheForModuleFiles(
-        currentIrModule, irModules, jsIrLinker, configuration, dirtyFiles, artifactCache, exportedDeclarations, mainArguments
-    )
-    return currentIrModule.name.asString()
-}
-
-@Suppress("UNUSED_PARAMETER")
 fun buildCacheForModuleFiles2(
     currentModule: IrModuleFragment,
-    dependencies: Collection<IrModuleFragment>,
+    allModules: Collection<IrModuleFragment>,
     deserializer: JsIrLinker,
     configuration: CompilerConfiguration,
-    dirtyFiles: Collection<String>?,
-    artifactCache: ArtifactCache,
+    dirtyFiles: Collection<IrFile>,
     exportedDeclarations: Set<FqName>,
-    mainArguments: List<String>?,
+    mainArguments: List<String>?
 ) {
     compileWithIC(
         currentModule,
+        allModules = allModules,
+        filesToLower = dirtyFiles,
         configuration = configuration,
         deserializer = deserializer,
-        dependencies = dependencies,
         mainArguments = mainArguments,
         exportedDeclarations = exportedDeclarations,
-        filesToLower = dirtyFiles?.toSet(),
-        artifactCache = artifactCache,
     )
 }
