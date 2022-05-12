@@ -204,7 +204,7 @@ declare namespace JS_TESTS {
             private constructor();
         }
         namespace Parent {
-            abstract class Nested1 extends _objects_.foo0Parent0Nested1 {
+            abstract class Nested1 extends _objects_.foo$Parent$Nested1 {
                 private constructor();
             }
             namespace Nested1 {
@@ -229,7 +229,7 @@ declare namespace JS_TESTS {
         function createNested3(): foo.Parent.Nested1.Nested2.Companion.Nested3;
     }
     namespace _objects_ {
-        const foo0Parent0Nested1: {
+        const foo$Parent$Nested1: {
             get value(): string;
         } & {
             new(): any;

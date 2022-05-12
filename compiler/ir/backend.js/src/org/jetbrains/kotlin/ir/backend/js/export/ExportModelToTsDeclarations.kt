@@ -19,6 +19,7 @@ private const val declare = "declare"
 private const val Nullable = "Nullable"
 private const val doNotImplementIt = "__doNotImplementIt"
 private const val objects = "_objects_"
+private const val syntheticObjectNameSeparator = '$'
 
 fun ExportedModule.toTypeScript(): String {
     return ExportModelToTsDeclarations().generateTypeScript(name, this)
@@ -200,7 +201,7 @@ class ExportModelToTsDeclarations {
             .takeIf { shouldRenderSeparatedAbstractClass }
             ?.getFqNameWithJsNameWhenAvailable(true)
             ?.asString()
-            ?.replace('.', '0') ?: name
+            ?.replace('.', syntheticObjectNameSeparator) ?: name
 
         val property = ExportedProperty(
             name = propertyName,
