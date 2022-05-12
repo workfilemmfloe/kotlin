@@ -5,6 +5,7 @@
 
 package org.jetbrains.kotlin.gradle.kpm.idea
 
+import org.jetbrains.kotlin.cli.common.messages.MessageCollector
 import org.jetbrains.kotlin.gradle.kpm.KotlinExternalModelContainer
 import org.jetbrains.kotlin.gradle.plugin.mpp.pm20.*
 
@@ -14,6 +15,7 @@ internal fun IdeaKotlinProjectModelBuildingContext.IdeaKotlinFragment(fragment: 
 }
 
 private fun IdeaKotlinProjectModelBuildingContext.buildIdeaKotlinFragment(fragment: KotlinGradleFragment): IdeaKotlinFragment {
+    val compilerArguments = compilerArgumentsResolver.resolve(fragment)
     return IdeaKotlinFragmentImpl(
         coordinates = IdeaKotlinFragmentCoordinates(fragment),
         platforms = fragment.containingVariants.map { variant -> IdeaKotlinPlatform(variant) }.toSet(),
@@ -21,7 +23,15 @@ private fun IdeaKotlinProjectModelBuildingContext.buildIdeaKotlinFragment(fragme
         dependencies = dependencyResolver.resolve(fragment).toList(),
         sourceDirectories = fragment.kotlinSourceRoots.sourceDirectories.files.toList().map { file -> IdeaKotlinSourceDirectoryImpl(file) },
         resourceDirectories = emptyList(),
-        external = (fragment as? KotlinGradleFragmentInternal)?.external ?: KotlinExternalModelContainer.Empty
+        external = (fragment as? KotlinGradleFragmentInternal)?.external ?: KotlinExternalModelContainer.Empty,
+        languageFeatures = compilerArguments?.configureLanguageFeatures(MessageCollector.NONE)?.entries.orEmpty()
+            .associate { (feature, state) -> feature.name to state.name },
+        analysisFlags = compilerArguments?.let { args ->
+            args.configureAnalysisFlags(MessageCollector.NONE, args.toLanguageVersionSettings(MessageCollector.NONE).languageVersion)
+                .mapKeys { (flag, value) ->
+                    flag.toString()
+                }
+        }.orEmpty()
     )
 }
 

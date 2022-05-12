@@ -84,7 +84,11 @@ internal class IdeaKotlinProjectModelBuilderImpl @UnsafeApi("Use factory methods
 
     private inner class Context : IdeaKotlinProjectModelBuildingContext {
         override val dependencyResolver = createDependencyResolver()
+        override val compilerArgumentsResolver: IdeaKotlinCompilerArgumentsResolver = createCompilerArgumentsResolver()
     }
+
+    private fun createCompilerArgumentsResolver(): IdeaKotlinCompilerArgumentsResolver =
+        IdeaKotlinCompilerArgumentsResolver(extension.project)
 
     private fun createDependencyResolver(): IdeaKotlinDependencyResolver {
         return IdeaKotlinDependencyResolver(DependencyResolutionPhase.values().map { phase ->

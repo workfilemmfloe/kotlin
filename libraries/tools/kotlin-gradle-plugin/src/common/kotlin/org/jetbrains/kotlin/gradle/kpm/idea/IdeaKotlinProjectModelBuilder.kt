@@ -15,9 +15,11 @@ import java.io.File
 
 internal interface IdeaKotlinProjectModelBuildingContext {
     val dependencyResolver: IdeaKotlinDependencyResolver
+    val compilerArgumentsResolver: IdeaKotlinCompilerArgumentsResolver
 
     companion object Empty : IdeaKotlinProjectModelBuildingContext {
         override val dependencyResolver: IdeaKotlinDependencyResolver = IdeaKotlinDependencyResolver.Empty
+        override val compilerArgumentsResolver: IdeaKotlinCompilerArgumentsResolver = IdeaKotlinCompilerArgumentsResolver.Empty
     }
 }
 
