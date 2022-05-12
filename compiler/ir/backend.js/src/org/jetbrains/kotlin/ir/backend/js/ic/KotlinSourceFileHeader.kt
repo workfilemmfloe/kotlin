@@ -5,13 +5,11 @@
 
 package org.jetbrains.kotlin.ir.backend.js.ic
 
-import org.jetbrains.kotlin.ir.backend.js.lower.calls.add
 import org.jetbrains.kotlin.ir.declarations.IrFile
 import org.jetbrains.kotlin.ir.util.IdSignature
 import org.jetbrains.kotlin.library.KotlinLibrary
 import org.jetbrains.kotlin.protobuf.CodedInputStream
 import org.jetbrains.kotlin.protobuf.CodedOutputStream
-import java.util.Collections
 
 @JvmInline
 value class KotlinLibraryFile(val path: String) {
@@ -53,11 +51,7 @@ class KotlinSourceFileMutableMap<T>(
     operator fun set(libFile: KotlinLibraryFile, sourceFile: KotlinSourceFile, data: T) =
         files.getOrPut(libFile) { mutableMapOf() }.put(sourceFile, data)
 
-    fun consumeFiles(other: KotlinSourceFileMap<T>) {
-        other.forEachFile { libFile, srcFile, data ->
-            set(libFile, srcFile, data)
-        }
-    }
+    fun copyFilesFrom(other: KotlinSourceFileMap<T>) = other.forEachFile { libFile, srcFile, data -> set(libFile, srcFile, data) }
 
     fun removeFile(libFile: KotlinLibraryFile, sourceFile: KotlinSourceFile) {
         val libFiles = files[libFile]
@@ -74,9 +68,24 @@ fun <T> KotlinSourceFileMap<T>.toMutable(): KotlinSourceFileMutableMap<T> {
     return KotlinSourceFileMutableMap(entries.associateTo(mutableMapOf()) { it.key to it.value.toMutableMap() })
 }
 
+fun KotlinSourceFileMap<Set<IdSignature>>.flatSignatures(): Set<IdSignature> {
+    val allSignatures = mutableSetOf<IdSignature>()
+    forEachFile { _, _, signatures -> allSignatures += signatures }
+    return allSignatures
+}
+
+fun KotlinSourceFileMutableMap<MutableSet<IdSignature>>.addSignature(
+    lib: KotlinLibraryFile, src: KotlinSourceFile, signature: IdSignature
+) = when (val signatures = this[lib, src]) {
+    null -> this[lib, src] = mutableSetOf(signature)
+    else -> signatures += signature
+}
+
 interface KotlinSourceFileMetadata {
     val inverseDependencies: KotlinSourceFileMap<Set<IdSignature>>
     val directDependencies: KotlinSourceFileMap<Set<IdSignature>>
+
+    val importedInlineFunctions: Map<IdSignature, ICHash>
 }
 
-fun KotlinSourceFileMetadata.isEmpty() = inverseDependencies.isEmpty() && directDependencies.isEmpty()
+fun KotlinSourceFileMetadata.isEmpty() = inverseDependencies.isEmpty() && directDependencies.isEmpty() && importedInlineFunctions.isEmpty()

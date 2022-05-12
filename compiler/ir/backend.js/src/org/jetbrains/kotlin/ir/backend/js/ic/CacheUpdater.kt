@@ -4,13 +4,10 @@
 
 package org.jetbrains.kotlin.ir.backend.js.ic
 
-import org.jetbrains.kotlin.backend.common.serialization.DeserializationStrategy
 import org.jetbrains.kotlin.config.CompilerConfiguration
-import org.jetbrains.kotlin.descriptors.konan.kotlinLibrary
 import org.jetbrains.kotlin.ir.backend.js.*
 import org.jetbrains.kotlin.ir.backend.js.lower.serialization.ir.JsIrLinker
 import org.jetbrains.kotlin.ir.declarations.IrFactory
-import org.jetbrains.kotlin.ir.declarations.IrFile
 import org.jetbrains.kotlin.ir.declarations.IrFunction
 import org.jetbrains.kotlin.ir.declarations.IrModuleFragment
 import org.jetbrains.kotlin.ir.util.*
@@ -20,7 +17,6 @@ import org.jetbrains.kotlin.konan.properties.propertyList
 import org.jetbrains.kotlin.library.KLIB_PROPERTY_DEPENDS
 import org.jetbrains.kotlin.library.KotlinLibrary
 import org.jetbrains.kotlin.name.FqName
-import org.jetbrains.kotlin.utils.addToStdlib.getOrPut
 import java.io.File
 
 
@@ -52,192 +48,6 @@ class CacheUpdater2(
     private val mainArguments: List<String>?,
     private val executor: CacheExecutor2
 ) {
-    private fun KotlinLibrary.moduleCanonicalName() = libraryFile.canonicalPath
-
-    private inner class KLibCacheUpdater(
-        private val library: KotlinLibrary,
-        private val dependencyGraph: Map<KotlinLibrary, List<KotlinLibrary>>,
-        private val incrementalCache: IncrementalCache,
-        private val klibIncrementalCaches: Map<KotlinLibrary, IncrementalCache>
-    ) {
-        private fun invalidateCacheForModule(externalHashes: Map<IdSignature, ICHash>): Pair<Set<String>, Map<String, ICHash>> {
-            val fileFingerPrints = mutableMapOf<String, ICHash>()
-            val dirtyFiles = mutableSetOf<String>()
-
-            if (incrementalCache.klibUpdated) {
-                for ((index, file) in incrementalCache.srcFilesInOrderFromKLib.withIndex()) {
-                    // 1. get cached fingerprints
-                    val fileOldFingerprint = incrementalCache.srcFingerprints[file] ?: 0
-
-                    // 2. calculate new fingerprints
-                    val fileNewFingerprint = library.fingerprint(index)
-
-                    if (fileOldFingerprint != fileNewFingerprint) {
-                        fileFingerPrints[file] = fileNewFingerprint
-                        incrementalCache.invalidateForSrcFile(file)
-
-                        // 3. form initial dirty set
-                        dirtyFiles.add(file)
-                    }
-                }
-            }
-
-            // 4. extend dirty set with inline functions
-            do {
-                if (dirtyFiles.size == incrementalCache.srcFilesInOrderFromKLib.size) break
-
-                val oldSize = dirtyFiles.size
-                for (file in incrementalCache.srcFilesInOrderFromKLib) {
-
-                    if (file in dirtyFiles) continue
-
-                    // check for clean file
-                    val usedInlineFunctions = incrementalCache.usedFunctions[file] ?: emptyMap()
-
-                    for ((sig, oldHash) in usedInlineFunctions) {
-                        val actualHash = externalHashes[sig] ?: incrementalCache.implementedFunctions.firstNotNullOfOrNull { it[sig] }
-                        // null means inline function is from dirty file, could be a bit more optimal
-                        if (actualHash == null || oldHash != actualHash) {
-                            fileFingerPrints[file] = incrementalCache.srcFingerprints[file] ?: error("Cannot find fingerprint for $file")
-                            incrementalCache.invalidateForSrcFile(file)
-                            dirtyFiles.add(file)
-                            break
-                        }
-                    }
-                }
-            } while (oldSize != dirtyFiles.size)
-
-            // 5. invalidate file caches
-            for (deleted in incrementalCache.deletedSrcFiles) {
-                incrementalCache.invalidateForSrcFile(deleted)
-            }
-
-            return dirtyFiles to fileFingerPrints
-        }
-
-        private fun getDependencySubGraph(): Map<KotlinLibrary, List<KotlinLibrary>> {
-            val subGraph = mutableMapOf<KotlinLibrary, List<KotlinLibrary>>()
-
-            fun addDependsFor(library: KotlinLibrary) {
-                if (library in subGraph) {
-                    return
-                }
-                val dependencies = dependencyGraph[library] ?: error("Cannot find dependencies for ${library.libraryName}")
-                subGraph[library] = dependencies
-                for (dependency in dependencies) {
-                    addDependsFor(dependency)
-                }
-            }
-            addDependsFor(library)
-            return subGraph
-        }
-
-        private fun buildCacheForModule(
-            irModule: IrModuleFragment,
-            deserializer: JsIrLinker,
-            dependencies: Collection<IrModuleFragment>,
-            dirtyFiles: Collection<String>,
-            cleanInlineHashes: Map<IdSignature, ICHash>,
-            fileFingerPrints: Map<String, ICHash>
-        ) {
-            val dirtyIrFiles = irModule.files.filter { it.fileEntry.name in dirtyFiles }
-
-            val flatHashes = InlineFunctionFlatHashBuilder().apply {
-                dirtyIrFiles.forEach { it.acceptVoid(this) }
-            }.getFlatHashes()
-
-            val hashProvider = object : InlineFunctionHashProvider {
-                override fun hashForExternalFunction(declaration: IrFunction): ICHash? {
-                    return declaration.symbol.signature?.let { cleanInlineHashes[it] }
-                }
-            }
-
-            val hashBuilder = InlineFunctionHashBuilder(hashProvider, flatHashes)
-
-            val hashes = hashBuilder.buildHashes(dirtyIrFiles)
-
-            val splitPerFiles = hashes.entries.filter { !it.key.isFakeOverride && (it.key.symbol.signature?.visibleCrossFile ?: false) }
-                .groupBy({ it.key.file }) {
-                    val signature = it.key.symbol.signature ?: error("Unexpected private inline fun ${it.key.render()}")
-                    signature to it.value
-                }
-
-            val inlineGraph = hashBuilder.buildInlineGraph(hashes)
-
-            dirtyIrFiles.forEach { irFile ->
-                val fileName = irFile.fileEntry.name
-                incrementalCache.updateHashes(
-                    srcPath = fileName,
-                    fingerprint = fileFingerPrints[fileName] ?: error("No fingerprint found for file $fileName"),
-                    usedFunctions = inlineGraph[irFile],
-                    implementedFunctions = splitPerFiles[irFile]?.toMap()
-                )
-            }
-
-            // TODO: actual way of building a cache could change in future
-            executor.execute(
-                irModule, dependencies, deserializer, compilerConfiguration, dirtyFiles, incrementalCache, emptySet(), mainArguments
-            )
-        }
-
-        fun checkLibrariesHash(): Boolean {
-            val flatHash = File(library.moduleCanonicalName()).fileHashForIC()
-            val dependencies = dependencyGraph[library] ?: error("Cannot find dependencies for ${library.libraryName}")
-
-            var transHash = flatHash
-            for (dep in dependencies) {
-                val depCache = klibIncrementalCaches[dep] ?: error("Cannot cache info for ${dep.libraryName}")
-                transHash = transHash.combineWith(depCache.klibTransitiveHash)
-            }
-            return incrementalCache.checkAndUpdateCacheFastInfo(flatHash, transHash)
-        }
-
-        fun actualizeCacheForModule(): CacheUpdateStatus2 {
-            // 1. Invalidate
-            val dependencies = dependencyGraph[library]!!
-
-            val incrementalCache = klibIncrementalCaches[library] ?: error("No cache provider for $library")
-
-            val sigHashes = mutableMapOf<IdSignature, ICHash>()
-            dependencies.forEach { lib ->
-                klibIncrementalCaches[lib]?.let { libCache ->
-                    libCache.fetchCacheDataForDependency()
-                    libCache.implementedFunctions.forEach { sigHashes.putAll(it) }
-                }
-            }
-
-            incrementalCache.fetchFullCacheData()
-            val (dirtySet, fileFingerPrints) = invalidateCacheForModule(sigHashes)
-            val removed = incrementalCache.deletedSrcFiles
-
-            if (dirtySet.isEmpty()) {
-                // up-to-date
-                incrementalCache.commitCacheForRemovedSrcFiles()
-                return CacheUpdateStatus2.NoDirtyFiles(removed)
-            }
-
-            // 2. Build
-            val jsIrLinkerProcessor = JsIrLinkerLoader(compilerConfiguration, library, getDependencySubGraph(), irFactory())
-            val (jsIrLinker, currentIrModule, irModules) = jsIrLinkerProcessor.processJsIrLinker(dirtySet)
-
-            val currentModuleDeserializer = jsIrLinker.moduleDeserializer(currentIrModule.descriptor)
-
-            incrementalCache.implementedFunctions.forEach { sigHashes.putAll(it) }
-
-            for (dirtySrcFile in dirtySet) {
-                val signatureMapping = currentModuleDeserializer.signatureDeserializerForFile(dirtySrcFile).signatureToIndexMapping()
-                incrementalCache.updateSignatureToIdMapping(dirtySrcFile, signatureMapping)
-            }
-
-            buildCacheForModule(currentIrModule, jsIrLinker, irModules, dirtySet, sigHashes, fileFingerPrints)
-
-            val updatedAll = dirtySet.size == incrementalCache.srcFilesInOrderFromKLib.size
-            incrementalCache.commitCacheForRebuiltSrcFiles(currentIrModule.name.asString())
-            // invalidated and re-built
-            return CacheUpdateStatus2.Dirty(removed, dirtySet, updatedAll)
-        }
-    }
-
     private fun loadLibraries(): Map<KotlinLibraryFile, KotlinLibrary> {
         val allResolvedDependencies = jsResolveLibraries(
             allModules,
@@ -256,58 +66,16 @@ class CacheUpdater2(
             }
         }
     }
-
-    //    fun actualizeCaches(callback: (CacheUpdateStatus2, String) -> Unit): List<ModuleArtifact> {
-//        val libraries = loadLibraries()
-//        val dependencyGraph = buildDependenciesGraph(libraries)
-//        val configHash = compilerConfiguration.configHashForIC()
-//
-//        val cacheMap = libraries.values.zip(icCachePaths).toMap()
-//
-//        val klibIncrementalCaches = mutableMapOf<KotlinLibrary, IncrementalCache>()
-//
-//        val rootModuleCanonical = File(mainModule).canonicalPath
-//        val mainLibrary = libraries[rootModuleCanonical] ?: error("Main library not found in libraries: $rootModuleCanonical")
-//
-//        val visitedLibraries = mutableSetOf<KotlinLibrary>()
-//        fun visitDependency(library: KotlinLibrary) {
-//            if (library in visitedLibraries) return
-//            visitedLibraries.add(library)
-//
-//            val libraryDeps = dependencyGraph[library] ?: error("Unknown library ${library.libraryName}")
-//            libraryDeps.forEach { visitDependency(it) }
-//
-//            val cachePath = cacheMap[library] ?: error("Unknown cache for library ${library.libraryName}")
-//            val incrementalCache = IncrementalCache(library, cachePath)
-//            klibIncrementalCaches[library] = incrementalCache
-//
-//            incrementalCache.invalidateCacheForNewConfig(configHash)
-//            val cacheUpdater = KLibCacheUpdater(library, dependencyGraph, incrementalCache, klibIncrementalCaches)
-//            val updateStatus = when {
-//                cacheUpdater.checkLibrariesHash() -> CacheUpdateStatus2.FastPath
-//                else -> cacheUpdater.actualizeCacheForModule()
-//            }
-//            callback(updateStatus, library.libraryFile.path)
-//        }
-//
-//        visitDependency(mainLibrary)
-//        return klibIncrementalCaches.map { it.value.fetchArtifacts() }
-//    }
-    class DirtyFileMetadata(
+    private class DirtyFileMetadata(
         val importedSignatures: Collection<IdSignature>,
 
         val oldDirectDependencies: KotlinSourceFileMap<*>,
 
         override val inverseDependencies: KotlinSourceFileMutableMap<MutableSet<IdSignature>> = KotlinSourceFileMutableMap(),
-        override val directDependencies: KotlinSourceFileMutableMap<MutableSet<IdSignature>> = KotlinSourceFileMutableMap()
-    ) : KotlinSourceFileMetadata {
-        private fun KotlinSourceFileMutableMap<MutableSet<IdSignature>>.addSignature(
-            lib: KotlinLibraryFile, src: KotlinSourceFile, signature: IdSignature
-        ) = when (val signatures = this[lib, src]) {
-            null -> this[lib, src] = mutableSetOf(signature)
-            else -> signatures += signature
-        }
+        override val directDependencies: KotlinSourceFileMutableMap<MutableSet<IdSignature>> = KotlinSourceFileMutableMap(),
 
+        override val importedInlineFunctions: MutableMap<IdSignature, ICHash> = mutableMapOf()
+    ) : KotlinSourceFileMetadata {
         fun addInverseDependency(lib: KotlinLibraryFile, src: KotlinSourceFile, signature: IdSignature) =
             inverseDependencies.addSignature(lib, src, signature)
 
@@ -315,21 +83,20 @@ class CacheUpdater2(
             directDependencies.addSignature(lib, src, signature)
     }
 
-    class UpdatedInverseDependenciesMetadata(
-        val oldInverseDependencies: KotlinSourceFileMap<Set<IdSignature>>,
+    private class UpdatedDependenciesMetadata(oldMetadata: KotlinSourceFileMetadata) : KotlinSourceFileMetadata {
+        private val oldInverseDependencies = oldMetadata.inverseDependencies
 
-        override val inverseDependencies: KotlinSourceFileMutableMap<Set<IdSignature>>,
-        override val directDependencies: KotlinSourceFileMap<Set<IdSignature>>
-    ) : KotlinSourceFileMetadata {
-        fun KotlinSourceFileMap<Set<IdSignature>>.flatSignatures(): Set<IdSignature> {
-            val allSignatures = mutableSetOf<IdSignature>()
-            forEachFile { _, _, signatures -> allSignatures += signatures }
-            return allSignatures
-        }
+        var importedInlineFunctionsModified = false
+
+        override val inverseDependencies = oldMetadata.inverseDependencies.toMutable()
+        override val directDependencies = oldMetadata.directDependencies
+        override val importedInlineFunctions = oldMetadata.importedInlineFunctions
 
         fun oldExportedSignatures() = oldInverseDependencies.flatSignatures()
         fun newExportedSignatures() = inverseDependencies.flatSignatures()
     }
+
+    private val transitiveHashCalculator = InlineFunctionTransitiveHashCalculator()
 
     private val libraries = loadLibraries()
     private val dependencyGraph = buildDependenciesGraph(libraries)
@@ -365,7 +132,10 @@ class CacheUpdater2(
     }
 
     private fun rebuildDirtySourceMetadata(
-        jsIrLinker: JsIrLinker, loadedFragments: Map<KotlinLibraryFile, IrModuleFragment>, dirtySrcFiles: KotlinSourceFileMap<*>
+        jsIrLinker: JsIrLinker,
+        loadedFragments: Map<KotlinLibraryFile, IrModuleFragment>,
+        dirtySrcFiles: KotlinSourceFileMap<*>,
+        inlineFunctionHashes: Map<IdSignature, ICHash>
     ): KotlinSourceFileMap<DirtyFileMetadata> {
         val idSignatureToFile = mutableMapOf<IdSignature, Pair<KotlinLibraryFile, KotlinSourceFile>>()
         val updatedMetadata = KotlinSourceFileMutableMap<DirtyFileMetadata>()
@@ -390,6 +160,7 @@ class CacheUpdater2(
                 for (importedSignature in internalHeader.importedSignatures) {
                     val (signatureFromLib, signatureFromFile) = idSignatureToFile[importedSignature] ?: continue
                     internalHeader.addDirectDependency(signatureFromLib, signatureFromFile, importedSignature)
+                    inlineFunctionHashes[importedSignature]?.let { internalHeader.importedInlineFunctions[importedSignature] = it }
 
                     val dependencyCacheData = updatedMetadata[signatureFromLib, signatureFromFile] ?: error("TODO ERROR")
                     dependencyCacheData.addInverseDependency(libFile, srcFile, importedSignature)
@@ -412,23 +183,20 @@ class CacheUpdater2(
         return result
     }
 
-    private fun collectUpdatedExportsFromDependencies(
-        loadedDirtyFiles: KotlinSourceFileMap<DirtyFileMetadata>
-    ): KotlinSourceFileMap<Set<IdSignature>> {
-        val filesWithNewExports = KotlinSourceFileMutableMap<UpdatedInverseDependenciesMetadata>()
+    private fun collectFilesWithModifiedExportsOrInlineImports(
+        loadedDirtyFiles: KotlinSourceFileMap<DirtyFileMetadata>, inlineFunctionHashes: Map<IdSignature, ICHash>
+    ): KotlinSourceFileMap<UpdatedDependenciesMetadata> {
+        val filesWithModifiedExports = KotlinSourceFileMutableMap<UpdatedDependenciesMetadata>()
 
-        fun KotlinSourceFileMetadata.makeNewMetadata(
-            libFile: KotlinLibraryFile, srcFile: KotlinSourceFile
-        ): UpdatedInverseDependenciesMetadata {
-            return filesWithNewExports[libFile, srcFile] ?: UpdatedInverseDependenciesMetadata(
-                inverseDependencies, inverseDependencies.toMutable(), directDependencies
-            ).also { filesWithNewExports[libFile, srcFile] = it }
-        }
+        fun KotlinSourceFileMetadata.makeNewMetadata(libFile: KotlinLibraryFile, srcFile: KotlinSourceFile) =
+            filesWithModifiedExports[libFile, srcFile] ?: UpdatedDependenciesMetadata(this).also {
+                filesWithModifiedExports[libFile, srcFile] = it
+            }
 
         loadedDirtyFiles.forEachFile { libFile, srcFile, srcFileMetadata ->
             // go through updated dependencies and collect modified
             for ((dependencyLibFile, dependencySrcFiles) in srcFileMetadata.directDependencies) {
-                val dependencyCache = incrementalCaches[dependencyLibFile] ?: error("TODO message")
+                val dependencyCache = incrementalCaches[dependencyLibFile] ?: error("TODO message1")
                 for ((dependencySrcFile, newSignatures) in dependencySrcFiles) {
                     val dependencySrcMetadata = dependencyCache.fetchSourceFileFullMetadata(dependencySrcFile)
                     val oldSignatures = dependencySrcMetadata.inverseDependencies[libFile, srcFile] ?: emptySet()
@@ -452,15 +220,35 @@ class CacheUpdater2(
                     }
                 }
             }
+
+            // go through dependent files and check if their inline imports were modified
+            for ((dependentLibFile, dependentSrcFiles) in srcFileMetadata.inverseDependencies) {
+                val dependentCache = incrementalCaches[dependentLibFile] ?: error("TODO message1")
+                for (dependentSrcFile in dependentSrcFiles.keys) {
+                    val dependentSrcMetadata = dependentCache.fetchSourceFileFullMetadata(dependentSrcFile)
+                    val importedInlineModified = dependentSrcMetadata.importedInlineFunctions.any {
+                        inlineFunctionHashes[it.key]?.let { newHash -> newHash != it.value } ?: false
+                    }
+                    if (importedInlineModified) {
+                        dependentSrcMetadata.makeNewMetadata(dependentLibFile, dependentSrcFile).importedInlineFunctionsModified = true
+                    }
+                }
+            }
         }
 
-        val exportedSymbols = KotlinSourceFileMutableMap<Set<IdSignature>>()
+        return filesWithModifiedExports
+    }
 
-        filesWithNewExports.forEachFile { libFile, srcFile, srcFileMetadata ->
+    private fun collectFilesToRebuildSignatures(
+        filesWithModifiedExports: KotlinSourceFileMap<UpdatedDependenciesMetadata>
+    ): KotlinSourceFileMap<Set<IdSignature>> {
+        val filesToRebuild = KotlinSourceFileMutableMap<Set<IdSignature>>()
+
+        filesWithModifiedExports.forEachFile { libFile, srcFile, srcFileMetadata ->
             val newExportedSignatures = srcFileMetadata.newExportedSignatures()
-            if (newExportedSignatures != srcFileMetadata.oldExportedSignatures()) {
-                // if exported signatures are updated - rebuild
-                exportedSymbols[libFile, srcFile] = newExportedSignatures
+            if (srcFileMetadata.importedInlineFunctionsModified || newExportedSignatures != srcFileMetadata.oldExportedSignatures()) {
+                // if exported signatures or imported inline functions were modified - rebuild
+                filesToRebuild[libFile, srcFile] = newExportedSignatures
             } else {
                 // if exported signatures are the same - just update cache metadata
                 val cache = incrementalCaches[libFile] ?: error("TODO message")
@@ -468,7 +256,7 @@ class CacheUpdater2(
             }
         }
 
-        return exportedSymbols
+        return filesToRebuild
     }
 
     private fun commitCacheMetadata(jsIrLinker: JsIrLinker, loadedFragments: Map<KotlinLibraryFile, IrModuleFragment>) {
@@ -499,40 +287,45 @@ class CacheUpdater2(
 
         doMeasure("loadModifiedFiles")
 
-
         val dirtyFileExports = collectExportedSymbolsForDirtyFiles(modifiedFiles)
 
         doMeasure("collectExportedSymbolsForDirtyFiles")
 
         val jsIrLinkerLoader = JsIrLinkerLoader(compilerConfiguration, mainLibrary, dependencyGraph, irFactory())
         var loadedIr = jsIrLinkerLoader.loadIr(dirtyFileExports)
+        doMeasure("load IR 0")
 
         var cnt = 0
-        doMeasure("load IR $cnt")
 
 
         var lastDirtyFiles: KotlinSourceFileMap<Collection<IdSignature>> = dirtyFileExports
         var hasUpdatedExports = false
 
         while (true) {
-            val newDirtyFileHeaders = rebuildDirtySourceMetadata(loadedIr.linker, loadedIr.loadedFragments, lastDirtyFiles)
+            val inlineFunctionHashes = transitiveHashCalculator.updateTransitiveHashes(loadedIr.loadedFragments.values)
+            doMeasure("collectInlineFunctionTransitiveHashes")
+
+            val dirtyHeaders = rebuildDirtySourceMetadata(loadedIr.linker, loadedIr.loadedFragments, lastDirtyFiles, inlineFunctionHashes)
             doMeasure("rebuildDirtySourceMetadata $cnt")
 
-            val dirtyExportFiles = collectUpdatedExportsFromDependencies(newDirtyFileHeaders)
-            doMeasure("collectUpdatedExportsFromDependencies $cnt")
+            val filesWithModifiedExportsOrImports = collectFilesWithModifiedExportsOrInlineImports(dirtyHeaders, inlineFunctionHashes)
+            doMeasure("collectFilesWithModifiedExportsOrInlineImports $cnt")
 
-            if (dirtyExportFiles.isEmpty()) {
+            val filesToRebuild = collectFilesToRebuildSignatures(filesWithModifiedExportsOrImports)
+            doMeasure("collectFilesToRebuildSignatures $cnt")
+
+            if (filesToRebuild.isEmpty()) {
                 break
             }
 
             hasUpdatedExports = true
-            loadedIr = jsIrLinkerLoader.loadIr(dirtyExportFiles)
+            loadedIr = jsIrLinkerLoader.loadIr(filesToRebuild)
             cnt++
 
             doMeasure("load IR $cnt")
 
-            lastDirtyFiles = dirtyExportFiles
-            dirtyFileExports.consumeFiles(dirtyExportFiles)
+            lastDirtyFiles = filesToRebuild
+            dirtyFileExports.copyFilesFrom(filesToRebuild)
             doMeasure("consumeFiles $cnt")
         }
 
@@ -543,6 +336,10 @@ class CacheUpdater2(
         commitCacheMetadata(loadedIr.linker, loadedIr.loadedFragments)
         doMeasure("commitCacheMetadata")
 
+//        executor.execute(
+//            loadedIr.loadedFragments[mainLibraryFile]!!, loadedIr.loadedFragments.values, loadedIr.linker, compilerConfiguration, null, incrementalCache, emptySet(), mainArguments
+//        )
+//
         return profile
     }
 }

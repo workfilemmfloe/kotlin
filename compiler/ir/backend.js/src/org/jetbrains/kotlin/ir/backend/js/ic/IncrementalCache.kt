@@ -41,12 +41,16 @@ class IncrementalCache(private val library: KotlinLibrary, cachePath: String) : 
 
     private class KotlinSourceFileMetadataFromDisk(
         override val inverseDependencies: KotlinSourceFileMap<Set<IdSignature>>,
-        override val directDependencies: KotlinSourceFileMap<Set<IdSignature>>
+        override val directDependencies: KotlinSourceFileMap<Set<IdSignature>>,
+
+        override val importedInlineFunctions: Map<IdSignature, ICHash>
     ) : KotlinSourceFileMetadata
 
     private object KotlinSourceFileMetadataNotExist : KotlinSourceFileMetadata {
         override val inverseDependencies = KotlinSourceFileMap<Set<IdSignature>>(emptyMap())
         override val directDependencies = KotlinSourceFileMap<Set<IdSignature>>(emptyMap())
+
+        override val importedInlineFunctions = emptyMap<IdSignature, ICHash>()
     }
 
     private enum class CacheState { NON_LOADED, FETCHED_FOR_DEPENDENCY, FETCHED_FULL }
@@ -433,9 +437,20 @@ class IncrementalCache(private val library: KotlinLibrary, cachePath: String) : 
                     put(libraryFile, depends)
                 }
 
-                val directDependencies = readDependencies()
-                val reverseDependencies = readDependencies()
-                KotlinSourceFileMetadataFromDisk(KotlinSourceFileMap(reverseDependencies), KotlinSourceFileMap(directDependencies))
+                val directDependencies = KotlinSourceFileMap(readDependencies())
+                val reverseDependencies = KotlinSourceFileMap(readDependencies())
+
+                val importedInlineFunctions = if (loadSignatures) {
+                    buildMapUntil(readInt32()) {
+                        val signature = deserializer.deserializeIdSignature(readInt32())
+                        val transitiveHash = ICHash.fromProtoStream(this@useCodedInputIfExists)
+                        put(signature, transitiveHash)
+                    }
+                } else {
+                    emptyMap()
+                }
+
+                KotlinSourceFileMetadataFromDisk(reverseDependencies, directDependencies, importedInlineFunctions)
             } ?: KotlinSourceFileMetadataNotExist
         }
 
@@ -472,6 +487,13 @@ class IncrementalCache(private val library: KotlinLibrary, cachePath: String) : 
 
             writeDepends(sourceFileMetadata.directDependencies)
             writeDepends(sourceFileMetadata.inverseDependencies)
+
+            writeInt32NoTag(sourceFileMetadata.importedInlineFunctions.size)
+            for ((signature, transitiveHash) in sourceFileMetadata.importedInlineFunctions) {
+                val index = signatureToIndexMapping[signature] ?: error("TODO message")
+                writeInt32NoTag(index)
+                transitiveHash.toProtoStream(this)
+            }
         }
     }
 }
