@@ -257,3 +257,14 @@ data class KT39423(
     val a: String,
     val b: Int? = null
 )
+
+@JsExport
+external interface OptionalFieldsInterface {
+    val required: Int
+    @JsOptional val notRequired: Int?
+}
+
+@JsExport
+fun processOptionalInterface(a: OptionalFieldsInterface): String {
+    return "${a.required}${a.notRequired ?: "unknown"}"
+}

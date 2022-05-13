@@ -3,6 +3,12 @@ declare namespace JS_TESTS {
     const __doNotImplementIt: unique symbol
     type __doNotImplementIt = typeof __doNotImplementIt
     namespace foo {
+        interface OptionalFieldsInterface {
+            readonly required: number;
+            readonly notRequired?: Nullable<number>;
+        }
+    }
+    namespace foo {
         const _val: number;
         let _var: number;
         const _valCustomWithField: number;
@@ -198,5 +204,6 @@ declare namespace JS_TESTS {
             hashCode(): number;
             equals(other: Nullable<any>): boolean;
         }
+        function processOptionalInterface(a: foo.OptionalFieldsInterface): string;
     }
 }

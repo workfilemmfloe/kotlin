@@ -28,10 +28,11 @@ var TestAbstract = JS_TESTS.foo.TestAbstract;
 var TestDataClass = JS_TESTS.foo.TestDataClass;
 var TestEnumClass = JS_TESTS.foo.TestEnumClass;
 var TestInterfaceImpl = JS_TESTS.foo.TestInterfaceImpl;
-var processInterface = JS_TESTS.foo.processInterface;
+var processOptionalInterface = JS_TESTS.foo.processOptionalInterface;
 var OuterClass = JS_TESTS.foo.OuterClass;
 var KT38262 = JS_TESTS.foo.KT38262;
 var JsNameTest = JS_TESTS.foo.JsNameTest;
+var processInterface = JS_TESTS.foo.processInterface;
 function assert(condition) {
     if (!condition) {
         throw "Assertion failed";
@@ -135,5 +136,8 @@ function box() {
     assert(jsNameTest.runTest() === "JsNameTest");
     var jsNameNestedTest = JsNameTest.Companion.createChild(42);
     assert(jsNameNestedTest.value === 42);
+    assert(processOptionalInterface({ required: 4 }) == "4unknown");
+    assert(processOptionalInterface({ required: 4, notRequired: null }) == "4unknown");
+    assert(processOptionalInterface({ required: 4, notRequired: 5 }) == "45");
     return "OK";
 }
