@@ -258,6 +258,7 @@ data class KT39423(
     val b: Int? = null
 )
 
+@JsExport
 object Parent {
     object Nested1 {
         val value: String = "Nested1"

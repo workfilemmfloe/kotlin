@@ -187,7 +187,6 @@ declare namespace JS_TESTS {
                 get value(): number;
             }
         }
-
         class KT39423 {
             constructor(a: string, b?: Nullable<number>);
             get a(): string;
@@ -199,7 +198,6 @@ declare namespace JS_TESTS {
             hashCode(): number;
             equals(other: Nullable<any>): boolean;
         }
-
         abstract class Parent {
             private constructor();
         }
